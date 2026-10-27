@@ -156,6 +156,24 @@ Demonstrates:
 - User banning + incident response
 - AI‑assisted development with minimal boilerplate
 
+## Running tests
+
+The JUnit 5 suite lives in `src/test/java`. It covers JWT generation and validation,
+key loading and rotation, JWKS, token revocation and user bans, role checks,
+rate limits, request filters, error responses, and Spring configuration.
+Tests generate their own keys and mock Redis; no external services are required.
+Use Java 21 and the included Gradle wrapper:
+
+```powershell
+.\gradlew.bat test         # Run the test suite
+.\gradlew.bat build        # Build the library and run tests
+.\gradlew.bat clean build  # Rebuild and run tests from scratch
+```
+
+On macOS/Linux, use `./gradlew` instead. Gradle's `build` and `check` tasks already
+depend on `test`, so a failing test fails the build. The HTML test report is at
+`build/reports/tests/test/index.html`.
+
 ## Installation
 
 ```xml

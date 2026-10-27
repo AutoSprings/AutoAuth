@@ -53,6 +53,11 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+
+    testLogging {
+        events 'failed', 'skipped'
+        exceptionFormat = 'short'
+    }
 }
 
 publishing {
