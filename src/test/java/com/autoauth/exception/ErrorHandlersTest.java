@@ -26,24 +26,6 @@ class ErrorHandlersTest {
         assertError(403, "Forbidden");
     }
 
-    @Test
-    void rateLimitResolverHandlesQuotaFailuresWithJson429() throws Exception {
-        var result = new AutoAuthRateLimitExceptionResolver().resolveException(
-                request, response, null, new RateLimitExceededException("exceeded"));
-        assertThat(result).isNotNull();
-        assertThat(result.isEmpty()).isTrue();
-        assertError(429, "Too Many Requests");
-    }
-
-    @Test
-    void rateLimitResolverLeavesOtherExceptionsForOtherResolvers() {
-        var result = new AutoAuthRateLimitExceptionResolver().resolveException(
-                request, response, null, new IllegalStateException("other"));
-        assertThat(result).isNull();
-        assertThat(response.getStatus()).isEqualTo(200);
-        assertThat(response.getContentAsByteArray()).isEmpty();
-    }
-
     private void assertError(int status, String error) throws Exception {
         assertThat(response.getStatus()).isEqualTo(status);
         assertThat(response.getContentType()).isEqualTo("application/json");

@@ -1,17 +1,12 @@
 package com.autoauth.config;
 
-import com.autoauth.aop.RateLimitAspect;
 import com.autoauth.blacklist.CafeTokenBlackList;
 import com.autoauth.blacklist.TokenBlackList;
 import com.autoauth.controller.JwksController;
-import com.autoauth.exception.AutoAuthRateLimitExceptionResolver;
 import com.autoauth.jwt.JwtGenerator;
 import com.autoauth.jwt.JwtKeyProvider;
 import com.autoauth.jwt.JwtValidator;
 import com.autoauth.aop.RoleAspect;
-import com.autoauth.config.AutoAuthSwaggerConfig;
-
-import com.autoauth.ratelimit.RateLimitService;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -69,24 +64,6 @@ public class AutoAuthAutoConfiguration {
     @ConditionalOnMissingBean
     public JwtValidator jwtValidator(JwtKeyProvider keyProvider, TokenBlackList blackList, AutoAuthProperties properties, Clock clock) {
         return new JwtValidator(keyProvider, blackList, properties, clock);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public RateLimitService rateLimitService() {
-        return new RateLimitService();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public RateLimitAspect rateLimitAspect(RateLimitService rateLimitService) {
-        return new RateLimitAspect(rateLimitService);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public AutoAuthRateLimitExceptionResolver autoAuthRateLimitExceptionResolver() {
-        return new AutoAuthRateLimitExceptionResolver();
     }
 
 }

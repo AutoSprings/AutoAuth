@@ -1,19 +1,15 @@
 package com.autoauth.config;
 
-import com.autoauth.aop.RateLimitAspect;
 import com.autoauth.aop.RoleAspect;
 import com.autoauth.annotation.PublicEndpoint;
-import com.autoauth.annotation.RateLimit;
 import com.autoauth.annotation.RequiresRole;
 import com.autoauth.blacklist.CafeTokenBlackList;
 import com.autoauth.blacklist.TokenBlackList;
 import com.autoauth.controller.JwksController;
-import com.autoauth.exception.AutoAuthRateLimitExceptionResolver;
 import com.autoauth.jwt.JwtGenerator;
 import com.autoauth.jwt.JwtKeyProvider;
 import com.autoauth.jwt.JwtValidator;
 import com.autoauth.model.AutoAuthUser;
-import com.autoauth.ratelimit.RateLimitService;
 import com.autoauth.support.TestKeys;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.security.SecurityScheme;
@@ -35,6 +31,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -49,20 +46,22 @@ class AutoAuthConfigurationTest {
         runner.run(context -> {
             assertThat(context).hasNotFailed().hasSingleBean(JwtKeyProvider.class)
                     .hasSingleBean(JwtGenerator.class).hasSingleBean(JwtValidator.class)
-                    .hasSingleBean(RoleAspect.class).hasSingleBean(RateLimitAspect.class)
-                    .hasSingleBean(RateLimitService.class).hasSingleBean(SecurityFilterChain.class)
-                    .hasSingleBean(AutoAuthRateLimitExceptionResolver.class).hasSingleBean(Clock.class);
+                    .hasSingleBean(RoleAspect.class).hasSingleBean(SecurityFilterChain.class)
+                    .hasSingleBean(Clock.class);
             assertThat(context.getBean(TokenBlackList.class)).isInstanceOf(CafeTokenBlackList.class);
             assertThat(context).doesNotHaveBean(JwksController.class);
             AutoAuthProperties properties = context.getBean(AutoAuthProperties.class);
             assertThat(properties.getExpirationMinutes()).isEqualTo(15);
             assertThat(properties.getRefreshExpirationMinutes()).isEqualTo(10080);
-            assertThat(properties.getPreAuthRateLimit()).isEqualTo(50);
             assertThat(properties.getIssuer()).isEqualTo("autoauth-default-issuer");
             assertThat(properties.getAudience()).isEqualTo("autoauth-default-audience");
             assertThat(properties.getPublicPaths()).isEmpty();
             assertThat(properties.getAllowedOrigins()).isEmpty();
             assertThat(context.getBean(Clock.class).getZone()).isEqualTo(ZoneOffset.UTC);
+            assertThatThrownBy(() -> Class.forName("com.autolimit.config.AutoLimitAutoConfiguration"))
+                    .isInstanceOf(ClassNotFoundException.class);
+            assertThat(context.getBean(SecurityFilterChain.class).getFilters())
+                    .allMatch(filter -> !filter.getClass().getSimpleName().equals("IpRateLimitFilter"));
         });
     }
 
@@ -70,16 +69,14 @@ class AutoAuthConfigurationTest {
     void respectsApplicationProvidedBeans() {
         TokenBlackList blacklist = new CafeTokenBlackList();
         Clock clock = Clock.fixed(Instant.parse("2030-01-01T00:00:00Z"), ZoneOffset.UTC);
-        RateLimitService limiter = new RateLimitService();
         OpenAPI openAPI = new OpenAPI();
         runner.withBean(TokenBlackList.class, () -> blacklist).withBean(Clock.class, () -> clock)
-                .withBean(RateLimitService.class, () -> limiter).withBean(OpenAPI.class, () -> openAPI)
+                .withBean(OpenAPI.class, () -> openAPI)
                 .run(context -> {
                     assertThat(context).hasNotFailed().hasSingleBean(TokenBlackList.class)
-                            .hasSingleBean(Clock.class).hasSingleBean(RateLimitService.class).hasSingleBean(OpenAPI.class);
+                            .hasSingleBean(Clock.class).hasSingleBean(OpenAPI.class);
                     assertThat(context.getBean(TokenBlackList.class)).isSameAs(blacklist);
                     assertThat(context.getBean(Clock.class)).isSameAs(clock);
-                    assertThat(context.getBean(RateLimitService.class)).isSameAs(limiter);
                     assertThat(context.getBean(OpenAPI.class)).isSameAs(openAPI);
                 });
     }
@@ -155,17 +152,6 @@ class AutoAuthConfigurationTest {
     }
 
     @Test
-    void rateLimitedEndpointReturnsJson429AfterQuota() {
-        withKeys().run(context -> {
-            MockMvc mvc = mockMvc(context);
-            mvc.perform(get("/api/limited")).andExpect(status().isOk());
-            mvc.perform(get("/api/limited")).andExpect(status().isOk());
-            mvc.perform(get("/api/limited")).andExpect(status().isTooManyRequests())
-                    .andExpect(jsonPath("$.error").value("Too Many Requests"));
-        });
-    }
-
-    @Test
     void corsPreflightAllowsConfiguredOriginAndRejectsOtherOrigins() {
         withKeys().withPropertyValues("autoauth.allowed-origins[0]=https://example.test").run(context -> {
             MockMvc mvc = mockMvc(context);
@@ -182,7 +168,7 @@ class AutoAuthConfigurationTest {
     private WebApplicationContextRunner withKeys() {
         AutoAuthProperties properties = TestKeys.properties();
         return runner.withPropertyValues("autoauth.private-key=" + properties.getPrivateKey(),
-                "autoauth.public-key=" + properties.getPublicKey(), "autoauth.pre-auth-rate-limit=500");
+                "autoauth.public-key=" + properties.getPublicKey());
     }
 
     private MockMvc mockMvc(WebApplicationContext context) {
@@ -202,8 +188,6 @@ class AutoAuthConfigurationTest {
         @GetMapping("/private") public String secured() { return "private"; }
         @PostMapping("/private") public String post() { return "posted"; }
         @RequiresRole("ADMIN") @GetMapping("/admin") public String admin() { return "admin"; }
-        @PublicEndpoint @RateLimit(fallbackRequests = 2)
-        @GetMapping("/limited") public String limited() { return "limited"; }
     }
 
     @PublicEndpoint @RestController @RequestMapping("/public")
