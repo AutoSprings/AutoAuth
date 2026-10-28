@@ -3,7 +3,7 @@
 Zero‑Boilerplate JWT Security for Spring Boot
 
 AutoAuth is a lightweight, annotation‑driven authentication and authorization framework for Spring Boot.
-It eliminates the boilerplate typically required for JWT security, key management, revocation, rate limiting, and endpoint protection.
+It eliminates the boilerplate typically required for JWT security, key management, revocation, and endpoint protection.
 Instead of wiring filters, keys, and validators manually, AutoAuth provides secure defaults and configures everything automatically.
 Focus on your endpoints — not your security plumbing.
 
@@ -22,12 +22,6 @@ Define your security rules directly in your controller code:
 
 @RequiresRole("ADMIN")
 @GetMapping("/admin")
-
-@RateLimit({
-    @UserQuota(role = "USER", maxRequests = 3),
-    @UserQuota(role = "PREMIUM", maxRequests = 10)
-})
-@GetMapping("/data")
 ```
 
 AutoAuth turns simple annotations into a full security configuration.
@@ -102,13 +96,6 @@ Marks a method or controller as publicly accessible.
 **@RequiresRole("ADMIN")**
 Enforces role‑based access control.
 
-**@RateLimit + @UserQuota**
-Tier‑based rate limiting using Caffeine or Redis.
-Supports:
-- Token bucket / leaky bucket
-- Per‑user + per‑endpoint keys
-- SaaS tiering (FREE → PREMIUM → ENTERPRISE)
-
 ### 5. User Banning
 
 - `banned:{userId}` cache key
@@ -152,15 +139,21 @@ Demonstrates:
 - Microservices authentication
 - Internal service‑to‑service authorization
 - Role‑based access control
-- Tier‑based rate limiting (SaaS)
+- Optional rate limiting with the independent [AutoLimit](https://github.com/AutoSprings/AutoLimit) library
 - User banning + incident response
 - AI‑assisted development with minimal boilerplate
+
+## Rate limiting migration
+
+Rate limiting is now provided by the independent [AutoLimit](https://github.com/AutoSprings/AutoLimit) library.
+AutoAuth has no AutoLimit dependency and installs no IP limiter or endpoint quotas.
+Existing limiter consumers must follow the [migration guide](docs/migration-autolimit.md).
 
 ## Running tests
 
 The JUnit 5 suite lives in `src/test/java`. It covers JWT generation and validation,
 key loading and rotation, JWKS, token revocation and user bans, role checks,
-rate limits, request filters, error responses, and Spring configuration.
+authentication filters, error responses, and Spring configuration.
 Tests generate their own keys and mock Redis; no external services are required.
 Use Java 21 and the included Gradle wrapper:
 
@@ -190,7 +183,7 @@ Choose AutoAuth when you want:
 - JWT security without OAuth/OIDC complexity
 - Simple annotations instead of large security DSLs
 - Instant cross‑language token verification (JWKS)
-- Built‑in revocation, rate limiting, and banning
+- Built‑in revocation and banning
 - Lightweight microservice‑friendly auth
 - AI‑friendly, low‑boilerplate design
 

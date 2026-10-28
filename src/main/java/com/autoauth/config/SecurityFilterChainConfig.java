@@ -2,7 +2,6 @@ package com.autoauth.config;
 
 import com.autoauth.exception.AutoAuthAccessDeniedHandler;
 import com.autoauth.exception.AutoAuthAuthenticationEntryPoint;
-import com.autoauth.filter.IpRateLimitFilter;
 import com.autoauth.filter.JwtAuthenticationFilter;
 import com.autoauth.jwt.JwtValidator;
 import com.autoauth.util.EndpointScanner;
@@ -16,7 +15,6 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.authentication.logout.LogoutFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -43,9 +41,6 @@ public class SecurityFilterChainConfig {
 
         AutoAuthAuthenticationEntryPoint entryPoint = new AutoAuthAuthenticationEntryPoint();
         AutoAuthAccessDeniedHandler deniedHandler = new AutoAuthAccessDeniedHandler();
-
-        int maxRps = properties.getPreAuthRateLimit() > 0 ? properties.getPreAuthRateLimit() : 50;
-        IpRateLimitFilter ipRateLimitFilter = new IpRateLimitFilter(maxRps);
 
         JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwtValidator, properties.getCookieName());
 
@@ -81,7 +76,6 @@ public class SecurityFilterChainConfig {
 
                     auth.anyRequest().authenticated();
                 })
-                .addFilterBefore(ipRateLimitFilter, LogoutFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
