@@ -12,6 +12,7 @@ import com.autoauth.aop.RoleAspect;
 import com.autoauth.config.AutoAuthSwaggerConfig;
 
 import com.autoauth.ratelimit.RateLimitService;
+import com.autolimit.identity.CallerIdentityResolver;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,6 +23,7 @@ import org.springframework.context.annotation.EnableAspectJAutoProxy;
 
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.util.Optional;
 
 @AutoConfiguration
 @EnableConfigurationProperties(AutoAuthProperties.class)
@@ -79,14 +81,20 @@ public class AutoAuthAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public RateLimitAspect rateLimitAspect(RateLimitService rateLimitService) {
-        return new RateLimitAspect(rateLimitService);
+    public RateLimitAspect rateLimitAspect(RateLimitService rateLimitService, CallerIdentityResolver identityResolver) {
+        return new RateLimitAspect(rateLimitService, identityResolver);
     }
 
     @Bean
     @ConditionalOnMissingBean
     public AutoAuthRateLimitExceptionResolver autoAuthRateLimitExceptionResolver() {
         return new AutoAuthRateLimitExceptionResolver();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(CallerIdentityResolver.class)
+    public CallerIdentityResolver callerIdentityResolver() {
+        return Optional::empty;
     }
 
 }

@@ -14,6 +14,9 @@ import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import com.autolimit.identity.CallerIdentity;
+import com.autolimit.identity.CallerIdentityResolver;
+
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
@@ -28,9 +31,12 @@ import java.util.OptionalInt;
 public class RateLimitAspect {
 
     private final RateLimitService rateLimitService;
+    private final CallerIdentityResolver identityResolver;
 
-    public RateLimitAspect(RateLimitService rateLimitService) {
+    public RateLimitAspect(RateLimitService rateLimitService,
+                           CallerIdentityResolver identityResolver) {
         this.rateLimitService = rateLimitService;
+        this.identityResolver = identityResolver;
     }
 
     /**
@@ -68,18 +74,17 @@ public class RateLimitAspect {
      */
     private void enforceLimit(RateLimit rateLimit, String methodName) {
         String callerKey;
-        Optional<String> userId = AuthContext.getCurrentUserId();
+        Optional<CallerIdentity> caller = identityResolver.resolve();
 
         int maxRequests = rateLimit.fallbackRequests();
 
         // limit based on user id and role with the highest limit
-        if (userId.isPresent()) {
-            callerKey = "user:" + userId.get();
-
-            Optional<List<String>> userRoles = AuthContext.getCurrentUserRoles();
+        if (caller.isPresent()) {
+            CallerIdentity identity = caller.get();
+            callerKey = "user:" + identity.userId();
 
             OptionalInt highestLimit = Arrays.stream(rateLimit.value())
-                    .filter(quota -> userRoles.get().stream()
+                    .filter(quota -> identity.roles().stream()
                             .anyMatch(role -> role.equalsIgnoreCase(quota.role())))
                     .mapToInt(UserQuota::maxRequests)
                     .max();
