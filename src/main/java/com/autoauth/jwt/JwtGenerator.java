@@ -4,99 +4,56 @@ import com.autoauth.config.AutoAuthProperties;
 import com.autoauth.model.AutoAuthUser;
 import com.autoauth.model.TokenPair;
 import io.jsonwebtoken.Jwts;
-
-import io.jsonwebtoken.security.SecureDigestAlgorithm;
-
-import java.security.PrivateKey;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
+/** Issues access and refresh JWTs. Login and refresh-session policy belong to the application. */
 public class JwtGenerator {
-    private final JwtKeyProvider keyProvider;
+    private static final Set<String> RESERVED = Set.of("sub", "roles", "type", "exp", "iat", "nbf", "jti", "iss", "aud");
+    private final JwtKeyProvider keys;
     private final AutoAuthProperties properties;
+    private final Clock clock;
 
-    public JwtGenerator (JwtKeyProvider keyProvider, AutoAuthProperties properties) {
-        this.keyProvider = keyProvider;
+    public JwtGenerator(JwtKeyProvider keys, AutoAuthProperties properties) {
+        this(keys, properties, Clock.systemUTC());
+    }
+
+    public JwtGenerator(JwtKeyProvider keys, AutoAuthProperties properties, Clock clock) {
+        properties.validate();
+        this.keys = keys;
         this.properties = properties;
+        this.clock = clock;
     }
 
-    public String generateAccessToken(AutoAuthUser user){
-        long expirationTimeMillis = System.currentTimeMillis() + (properties.getExpirationMinutes() * 60 * 1000);
-
-        var builder = Jwts.builder()
-                .header().keyId(keyProvider.getKid()).and()
-                .issuer(properties.getIssuer())
-                .audience().add(properties.getAudience()).and()
-                .id(UUID.randomUUID().toString())
-                .subject(user.userId())
-                .claim("type", "access")
-                .claim("roles", user.roles())
-                .issuedAt(new Date())
-                .expiration(new Date(expirationTimeMillis));
-
-        if (user.customClaims() != null) {
-            user.customClaims().forEach(builder::claim);
+    public String generateAccessToken(AutoAuthUser user) {
+        if (user.customClaims().keySet().stream().anyMatch(RESERVED::contains)) {
+            throw new IllegalArgumentException("Custom claims must not replace reserved JWT claims");
         }
-
-        return builder
-                .signWith(keyProvider.getPrivateKey(),
-                        determineSigningAlgorithm(keyProvider.getPrivateKey()))
-                .compact();
+        return generate(user, "access", properties.getExpirationMinutes(), true);
     }
 
-    public String generateTaskToken(AutoAuthUser user, long expirationMinutes) {
-        long expirationTimeMillis = System.currentTimeMillis() + (expirationMinutes * 60 * 1000);
-
-        var builder = Jwts.builder()
-                .header().keyId(keyProvider.getKid()).and()
-                .issuer(properties.getIssuer())
-                .audience().add(properties.getAudience()).and()
-                .id(UUID.randomUUID().toString())
-                .subject(user.userId())
-                .claim("type", "task")
-                .claim("roles", user.roles())
-                .issuedAt(new Date())
-                .expiration(new Date(expirationTimeMillis));
-
-        if (user.customClaims() != null) {
-            user.customClaims().forEach(builder::claim);
-        }
-
-        return builder
-                .signWith(keyProvider.getPrivateKey(),
-                        determineSigningAlgorithm(keyProvider.getPrivateKey()))
-                .compact();
-    }
     public String generateRefreshToken(AutoAuthUser user) {
-
-        long expirationTimeMillis = System.currentTimeMillis() + (properties.getRefreshExpirationMinutes() * 60 * 1000);
-
-        return Jwts.builder()
-                .header().keyId(keyProvider.getKid()).and()
-                .issuer(properties.getIssuer())
-                .audience().add(properties.getAudience()).and()
-                .id(UUID.randomUUID().toString())
-                .subject(user.userId())
-                .claim("type", "refresh")
-                .issuedAt(new Date())
-                .expiration(new Date(expirationTimeMillis))
-                .signWith(keyProvider.getPrivateKey(),
-                        determineSigningAlgorithm(keyProvider.getPrivateKey()))
-                .compact();
+        return generate(user, "refresh", properties.getRefreshExpirationMinutes(), false);
     }
 
-    private SecureDigestAlgorithm determineSigningAlgorithm(PrivateKey key) {
-        String algo = key.getAlgorithm();
-        if ("RSA".equals(algo)) {
-            return Jwts.SIG.RS256;
-        } else if ("EC".equals(algo)) {
-            return Jwts.SIG.ES256;
-        } else if ("Ed25519".equals(algo) || "EdDSA".equals(algo)) {
-            return Jwts.SIG.EdDSA;
+    private String generate(AutoAuthUser user, String type, long minutes, boolean includeClaims) {
+        var now = clock.instant();
+        var builder = Jwts.builder().header().keyId(keys.getKid()).and()
+                .issuer(properties.getIssuer()).audience().add(properties.getAudience()).and()
+                .subject(user.userId()).id(UUID.randomUUID().toString()).claim("type", type)
+                .issuedAt(Date.from(now)).expiration(Date.from(now.plus(Duration.ofMinutes(minutes))));
+        if (includeClaims) {
+            builder.claim("roles", user.roles());
+            user.customClaims().forEach(builder::claim);
         }
-        throw new IllegalArgumentException("Unsupported signing key algorithm: " + algo);
+        String token = builder.signWith(keys.getPrivateKey(), Jwts.SIG.RS256).compact();
+        if (token.length() > properties.getMaxTokenLength()) {
+            throw new IllegalArgumentException("Generated JWT exceeds autoauth.max-token-length");
+        }
+        return token;
     }
 
     public TokenPair generateTokenPair(AutoAuthUser user) {

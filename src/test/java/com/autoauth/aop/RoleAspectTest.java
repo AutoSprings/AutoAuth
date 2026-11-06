@@ -4,7 +4,7 @@ import com.autoauth.annotation.RequiresRole;
 import com.autoauth.model.AutoAuthUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
+import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -53,9 +53,9 @@ class RoleAspectTest {
     }
 
     private static <T> T proxy(T target) {
-        AspectJProxyFactory factory = new AspectJProxyFactory(target);
-        factory.addAspect(new RoleAspect());
-        return factory.getProxy();
+        ProxyFactory factory = new ProxyFactory(target);
+        factory.addAdvisor(new RoleAspect());
+        return (T) factory.getProxy();
     }
 
     private void authenticate(String... roles) {
@@ -75,4 +75,36 @@ class RoleAspectTest {
         public String admin() { return "admin"; }
         @RequiresRole("USER") public String user() { return "user"; }
     }
+
+    @Test
+    void interfaceAnnotationsWorkWithJdkAndClassProxies() {
+        authenticate("ROLE_ADMIN");
+        for (boolean classProxy : new boolean[]{false, true}) {
+            ProxyFactory factory = new ProxyFactory(new InterfaceService());
+            factory.setProxyTargetClass(classProxy);
+            factory.addAdvisor(new RoleAspect());
+            Contract contract = (Contract) factory.getProxy();
+            assertThat(contract.admin()).isEqualTo("admin");
+            authenticate("USER");
+            assertThatThrownBy(contract::admin).isInstanceOf(AccessDeniedException.class);
+            authenticate("ROLE_ADMIN");
+        }
+    }
+
+    @Test
+    void emptyRoleRequirementsNeverPermitAccess() {
+        EmptyRules rules = proxy(new EmptyRules());
+        assertThatThrownBy(rules::empty).isInstanceOf(AccessDeniedException.class);
+    }
+
+    public interface Contract {
+        @RequiresRole("ADMIN") String admin();
+    }
+    public static class InterfaceService implements Contract {
+        public String admin() { return "admin"; }
+    }
+    public static class EmptyRules {
+        @RequiresRole(value = {}, requireAll = true) public String empty() { return "never"; }
+    }
+
 }

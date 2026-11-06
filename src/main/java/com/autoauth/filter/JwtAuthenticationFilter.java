@@ -1,91 +1,65 @@
 package com.autoauth.filter;
 
-import com.autoauth.jwt.JwtValidator;
-import com.autoauth.model.AutoAuthUser;
+import com.autoauth.config.AutoAuthProperties;
+import com.autoauth.exception.AutoAuthAuthenticationEntryPoint;
 import com.autoauth.exception.JwtValidationException;
-
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import com.autoauth.jwt.JwtValidator;
+import jakarta.servlet.*;
+import jakarta.servlet.http.*;
 import org.springframework.http.HttpHeaders;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
-
 import java.io.IOException;
-import java.util.List;
 
-public class JwtAuthenticationFilter extends OncePerRequestFilter{
+/** Bearer headers take precedence; refresh cookies are never used to authenticate requests. */
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+    private final JwtValidator validator;
+    private final AutoAuthProperties properties;
 
-    private final JwtValidator jwtValidator;
-    private final String cookieName;
-
-    public JwtAuthenticationFilter(JwtValidator jwtValidator, String cookieName) {
-        this.jwtValidator = jwtValidator;
-        this.cookieName = cookieName;
+    public JwtAuthenticationFilter(JwtValidator validator, AutoAuthProperties properties) {
+        this.validator = validator;
+        this.properties = properties;
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException
-    {
-        String token = null;
-
-        String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            token = authHeader.substring(7);
-        }
-
-        if (token == null && cookieName != null && !cookieName.isBlank()) {
-            token = extractTokenFromCookie(request, cookieName);
-        }
-
-        if (token == null) {
-            filterChain.doFilter(request, response);
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+            throws ServletException, IOException {
+        try {
+            String token = extractToken(request);
+            if (token != null) {
+                var user = validator.validateAccessToken(token);
+                var authorities = user.roles().stream().map(role -> new SimpleGrantedAuthority("ROLE_" + role)).toList();
+                SecurityContextHolder.getContext().setAuthentication(
+                        new UsernamePasswordAuthenticationToken(user, null, authorities));
+            }
+        } catch (JwtValidationException | IllegalArgumentException exception) {
+            SecurityContextHolder.clearContext();
+            new AutoAuthAuthenticationEntryPoint().commence(request, response,
+                    new BadCredentialsException("Invalid access token", exception));
             return;
         }
-
-        try {
-
-            AutoAuthUser user = jwtValidator.validateAccessToken(token);
-
-            List<SimpleGrantedAuthority> authorities = user.roles().stream()
-                    .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-                    .toList();
-
-            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(user, null, authorities);
-
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-
-        } catch (JwtValidationException | AuthenticationException | IllegalArgumentException | SecurityException e) {
-
-            SecurityContextHolder.clearContext();
-
-        }
-
-        filterChain.doFilter(request,response);
-
+        chain.doFilter(request, response);
     }
 
-    private String extractTokenFromCookie(HttpServletRequest request, String cookieName) {
-
-        Cookie[] cookies = request.getCookies();
-        if (cookies != null) {
-
-            for (Cookie cookie: cookies) {
-                if (cookieName.equals(cookie.getName())) {
-                    return cookie.getValue();
+    private String extractToken(HttpServletRequest request) {
+        String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (header != null && header.regionMatches(true, 0, "Bearer", 0, 6)) {
+            if (header.length() < 8 || header.charAt(6) != ' ') throw new JwtValidationException("Invalid bearer header");
+            return header.substring(7);
+        }
+        if (properties.isCookieEnabled() && request.getCookies() != null) {
+            String token = null;
+            for (Cookie cookie : request.getCookies()) {
+                if (properties.getCookieName().equals(cookie.getName())) {
+                    if (token != null) throw new JwtValidationException("Duplicate access cookies");
+                    token = cookie.getValue();
                 }
             }
-
+            return token;
         }
         return null;
     }
-
 }

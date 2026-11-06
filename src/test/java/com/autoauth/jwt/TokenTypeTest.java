@@ -29,6 +29,6 @@ class TokenTypeTest {
     void serializedValuesMatchJwtClaims() {
         assertThat(TokenType.ACCESS.getValue()).isEqualTo("access");
         assertThat(TokenType.REFRESH.getValue()).isEqualTo("refresh");
-        assertThat(TokenType.TASK.getValue()).isEqualTo("task");
+        assertThatThrownBy(() -> TokenType.fromString("task")).isInstanceOf(IllegalArgumentException.class);
     }
 }

@@ -1,67 +1,101 @@
 package com.autoauth.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Class to read the .YAML file with configurations
- *
- * Configurations needed are a jwtSecret password to sign and verify JWT keys
- * Allowed origins
- * Endpoints that you don't want to have a JWT token to get to. By default, all Endpoints need a token.
- */
-
+/** Settings for access/refresh JWTs, browser cookies, and endpoint security. */
 @ConfigurationProperties(prefix = "autoauth")
 public class AutoAuthProperties {
+    public enum Transport { COOKIE_AND_BEARER, BEARER }
 
     private String privateKey;
     private String publicKey;
-
-    private String cookieName;
-
-    private String jwtSecret;
-
     private String issuer = "autoauth-default-issuer";
     private String audience = "autoauth-default-audience";
-
     private long expirationMinutes = 15;
     private long refreshExpirationMinutes = 10080;
-
+    private Transport transport = Transport.COOKIE_AND_BEARER;
+    private String cookieName = "AUTOAUTH";
+    private String refreshCookieName = "AUTOAUTH_REFRESH";
+    private boolean cookieSecure = true;
+    private String cookieSameSite = "Lax";
+    private boolean swaggerPublic = false;
+    private int maxTokenLength = 16384;
     private List<String> allowedOrigins = new ArrayList<>();
-
     private List<String> publicPaths = new ArrayList<>();
 
-    public String getIssuer() {return issuer;}
+    public boolean isCookieEnabled() { return transport == Transport.COOKIE_AND_BEARER; }
 
-    public void setIssuer(String issuer) {this.issuer = issuer;}
+    /** Reject invalid settings before accepting requests. */
+    public void validate() {
+        if (issuer == null || issuer.isBlank() || audience == null || audience.isBlank()) {
+            throw new IllegalArgumentException("autoauth issuer and audience must not be blank");
+        }
+        validateLifetime(expirationMinutes);
+        validateLifetime(refreshExpirationMinutes);
+        if (transport == null || maxTokenLength < 256) {
+            throw new IllegalArgumentException("autoauth transport and max-token-length are invalid");
+        }
+        if (cookieName == null || !cookieName.matches("[A-Za-z0-9_-]+")
+                || refreshCookieName == null || !refreshCookieName.matches("[A-Za-z0-9_-]+")
+                || cookieName.equals(refreshCookieName) || cookieName.equals("XSRF-TOKEN")
+                || refreshCookieName.equals("XSRF-TOKEN")) {
+            throw new IllegalArgumentException("autoauth cookie names must be distinct valid names");
+        }
+        if (!List.of("Lax", "Strict", "None").contains(cookieSameSite)
+                || ("None".equals(cookieSameSite) && !cookieSecure)) {
+            throw new IllegalArgumentException("autoauth cookie-same-site must be Lax, Strict, or None (with Secure)");
+        }
+        if (allowedOrigins == null || allowedOrigins.stream().anyMatch(origin ->
+                origin == null || origin.isBlank() || origin.contains("*"))) {
+            throw new IllegalArgumentException("autoauth allowed-origins must contain explicit origins");
+        }
+        if (publicPaths == null || publicPaths.stream().anyMatch(path ->
+                path == null || !path.startsWith("/"))) {
+            throw new IllegalArgumentException("autoauth public-paths must start with /");
+        }
+    }
 
-    public String getAudience() {return audience;}
-
-    public void setAudience(String audience) {this.audience = audience;}
-
-    public String getJwtSecret() { return jwtSecret; }
-    public void setJwtSecret(String jwtSecret) { this.jwtSecret = jwtSecret; }
-
-    public long getExpirationMinutes() { return expirationMinutes; }
-    public void setExpirationMinutes(long expirationMinutes) { this.expirationMinutes = expirationMinutes; }
-
-    public List<String> getAllowedOrigins() { return allowedOrigins; }
-    public void setAllowedOrigins(List<String> allowedOrigins) { this.allowedOrigins = allowedOrigins; }
-
-    public List<String> getPublicPaths() { return publicPaths; }
-    public void setPublicPaths(List<String> publicPaths) { this.publicPaths = publicPaths; }
-
-    public String getCookieName() { return cookieName; }
-    public void setCookieName(String cookieName) { this.cookieName = cookieName; }
+    private static void validateLifetime(long minutes) {
+        try {
+            if (minutes <= 0) throw new ArithmeticException();
+            Duration.ofMinutes(minutes).toMillis();
+            java.time.Instant.now().plus(Duration.ofMinutes(minutes)).toEpochMilli();
+        } catch (ArithmeticException | java.time.DateTimeException exception) {
+            throw new IllegalArgumentException("autoauth token lifetimes must be positive and representable", exception);
+        }
+    }
 
     public String getPrivateKey() { return privateKey; }
-    public void setPrivateKey(String privateKey) { this.privateKey = privateKey; }
-
+    public void setPrivateKey(String value) { privateKey = value; }
     public String getPublicKey() { return publicKey; }
-    public void setPublicKey(String publicKey) { this.publicKey = publicKey; }
-
+    public void setPublicKey(String value) { publicKey = value; }
+    public String getIssuer() { return issuer; }
+    public void setIssuer(String value) { issuer = value; }
+    public String getAudience() { return audience; }
+    public void setAudience(String value) { audience = value; }
+    public long getExpirationMinutes() { return expirationMinutes; }
+    public void setExpirationMinutes(long value) { expirationMinutes = value; }
     public long getRefreshExpirationMinutes() { return refreshExpirationMinutes; }
-    public void setRefreshExpirationMinutes(long refreshExpirationMinutes) { this.refreshExpirationMinutes = refreshExpirationMinutes; }
-
+    public void setRefreshExpirationMinutes(long value) { refreshExpirationMinutes = value; }
+    public Transport getTransport() { return transport; }
+    public void setTransport(Transport value) { transport = value; }
+    public String getCookieName() { return cookieName; }
+    public void setCookieName(String value) { cookieName = value; }
+    public String getRefreshCookieName() { return refreshCookieName; }
+    public void setRefreshCookieName(String value) { refreshCookieName = value; }
+    public boolean isCookieSecure() { return cookieSecure; }
+    public void setCookieSecure(boolean value) { cookieSecure = value; }
+    public String getCookieSameSite() { return cookieSameSite; }
+    public void setCookieSameSite(String value) { cookieSameSite = value; }
+    public boolean isSwaggerPublic() { return swaggerPublic; }
+    public void setSwaggerPublic(boolean value) { swaggerPublic = value; }
+    public int getMaxTokenLength() { return maxTokenLength; }
+    public void setMaxTokenLength(int value) { maxTokenLength = value; }
+    public List<String> getAllowedOrigins() { return allowedOrigins; }
+    public void setAllowedOrigins(List<String> value) { allowedOrigins = value; }
+    public List<String> getPublicPaths() { return publicPaths; }
+    public void setPublicPaths(List<String> value) { publicPaths = value; }
 }

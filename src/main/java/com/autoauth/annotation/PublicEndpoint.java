@@ -3,51 +3,9 @@ package com.autoauth.annotation;
 import java.lang.annotation.*;
 
 /**
- * marks a controller class or mapping method as publicly accessible
- * <p>
- *     Endpoints marked with {@code @PublicEndpoint} bypass automatic jwt validation
- *     filter and do not require auth or auth cookie
- * </p>
- *
- * <h2>Usage Scopes:</h2>
- * <ul>
- *     <li><b>Method Level:</b> Apply {@code @PublicEndpoint}
- *     to a mapping method such as {@code @GetMapping} whitelists
- *     only that specific endpoint path.</li>
- *     <li><b>Class Level:</b> Apply {@code @PublicEndpoint} to a
- *     controller class such as {@code @RestController} whitelists
- *     all request paths mapped within aforementioned controller class</li>
- * </ul>
- *
- * <h2>Usage Examples:</h2>
- *
- * <h3>1. Method-level whitelisting</h3>
- * <pre>{@code
- * @RestController
- * @RequestMapping("/api/users")
- * public class UserController {
- *      // Secure (requires valid JWT)
- *      @GetMapping("profile")
- *      public Profile getProfile() {...}
- *
- *      // Public (no JWT reequired)
- *      @PublicEndpoint
- *      @PostMapping("/register")
- *      public void register() {...}
- * }}</pre>
- *
- * <h3>2. Class-level whitelisting</h3>
- * <pre>{@code
- * @PublicEndpoint
- * @RestController
- * @RequestMapping("/api/public")
- * public class PublicController {
- *      // Public (no JWT required)
- *      @GetMapping("/status")
- *      public status getStatus() {...}
- * }}</pre>
- *
- * @since 1.0.0
+ * Allows anonymous access to this MVC handler, or the registered handlers of this controller.
+ * HTTP method and mapping conditions are preserved. Cookie-mode CSRF protection still applies.
+ * An explicitly supplied invalid JWT is rejected even on a public endpoint.
  */
 @Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)

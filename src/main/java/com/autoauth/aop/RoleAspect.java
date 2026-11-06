@@ -3,88 +3,58 @@ package com.autoauth.aop;
 import com.autoauth.annotation.RequiresRole;
 import com.autoauth.model.AutoAuthUser;
 import com.autoauth.util.AuthContext;
-import org.aspectj.lang.JoinPoint;
-import org.aspectj.lang.annotation.Aspect;
-import org.aspectj.lang.annotation.Before;
-import org.aspectj.lang.reflect.MethodSignature;
+import org.aopalliance.intercept.*;
+import org.springframework.aop.support.AopUtils;
+import org.springframework.aop.support.StaticMethodMatcherPointcutAdvisor;
+import org.springframework.core.BridgeMethodResolver;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.security.access.AccessDeniedException;
-
+import org.springframework.util.ClassUtils;
 import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 
-/**
- * Aspect that intercepts methods or classes annotated with {@link RequiresRole}
- * Resolves the calling user's roles and checks if they have access with {@link #validateRoles(RequiresRole)}
- */
-@Aspect
-public class RoleAspect {
+/** Proxy-based role enforcement with method rules overriding class rules. */
+public class RoleAspect extends StaticMethodMatcherPointcutAdvisor implements MethodInterceptor {
+    public RoleAspect() { setAdvice(this); }
 
-    /**
-     * If the Endpoint has {@code @RequiresRole} annotation we check the request to see if
-     * the user has the required minimum role to hit that endpoint.
-     *
-     * @param joinPoint metadata of the intercepted method
-     */
-    @Before("@within(com.autoauth.annotation.RequiresRole) " +
-            "|| @annotation(com.autoauth.annotation.RequiresRole)")
-    public void checkRoles(JoinPoint joinPoint) {
+    @Override
+    public boolean matches(Method method, Class<?> targetClass) { return requirement(method, targetClass) != null; }
 
-        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-        Method method = signature.getMethod();
-
-        // fetch the spring bean instance
-        Class<?> targetClass = joinPoint.getTarget().getClass();
-
-        RequiresRole annotation = AnnotatedElementUtils.findMergedAnnotation(method, RequiresRole.class);
-
-        if(annotation == null) {
-            annotation = AnnotatedElementUtils.findMergedAnnotation(targetClass, RequiresRole.class);
+    @Override
+    public Object invoke(MethodInvocation invocation) throws Throwable {
+        Class<?> targetClass = AopUtils.getTargetClass(invocation.getThis());
+        RequiresRole rule = requirement(invocation.getMethod(), targetClass);
+        if (rule != null) {
+            if (rule.value().length == 0) throw new AccessDeniedException("Empty role requirement");
+            List<String> required;
+            try {
+                required = Arrays.stream(rule.value()).map(AutoAuthUser::canonicalRole).toList();
+            } catch (IllegalArgumentException exception) {
+                throw new AccessDeniedException("Invalid role requirement", exception);
+            }
+            List<String> actual = AuthContext.getCurrentUser().map(AutoAuthUser::roles).orElse(List.of());
+            boolean allowed = rule.requireAll() ? actual.containsAll(required) : required.stream().anyMatch(actual::contains);
+            if (!allowed) throw new AccessDeniedException("Required role is missing");
         }
-
-        if (annotation != null) {
-            // pass the context of user and method to the role checker
-            validateRoles(annotation);
-        }
-
+        return invocation.proceed();
     }
 
-    /**
-     * enforces the RBAC by checking to see if you have at least the minimum role to
-     * hit said endpoint.
-     *
-     * @param requiresRole method metadata that has RBAC to check
-     */
-    private void validateRoles(RequiresRole requiresRole) {
-
-        List<String> userRoles = AuthContext.getCurrentUser()
-                .map(AutoAuthUser::roles)
-                .orElse(List.of());
-
-        List<String> requiredRoles = Arrays.asList(requiresRole.value());
-
-        // start with 0 trust
-        boolean hasAccess = false;
-
-        // if you have role or higher role return true and let traffic through
-        if (requiresRole.requireAll()) {
-            hasAccess = new HashSet<>(userRoles).containsAll(requiredRoles);
-        } else {
-            for (String role : requiredRoles) {
-                if (userRoles.contains(role)) {
-                    hasAccess = true;
-                    break;
+    private RequiresRole requirement(Method method, Class<?> targetClass) {
+        Method specific = BridgeMethodResolver.findBridgedMethod(AopUtils.getMostSpecificMethod(method, targetClass));
+        RequiresRole rule = AnnotatedElementUtils.findMergedAnnotation(specific, RequiresRole.class);
+        if (rule == null) rule = AnnotatedElementUtils.findMergedAnnotation(method, RequiresRole.class);
+        if (rule == null) {
+            for (Class<?> contract : ClassUtils.getAllInterfacesForClassAsSet(targetClass)) {
+                try {
+                    rule = AnnotatedElementUtils.findMergedAnnotation(
+                            contract.getMethod(method.getName(), method.getParameterTypes()), RequiresRole.class);
+                    if (rule != null) break;
+                } catch (NoSuchMethodException ignored) {
+                    // This interface does not declare the intercepted method.
                 }
             }
         }
-
-        // if not access is found throw 403 http code
-        if (!hasAccess) {
-            throw new AccessDeniedException("Access Denied: User lacks required role");
-        }
-
+        return rule != null ? rule : AnnotatedElementUtils.findMergedAnnotation(targetClass, RequiresRole.class);
     }
-
 }

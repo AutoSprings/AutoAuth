@@ -1,200 +1,217 @@
 # AutoAuth
 
-Zero‑Boilerplate JWT Security for Spring Boot
+Simple access/refresh JWT authentication and role authorization for Spring Boot,
+with HttpOnly cookies and automatic Swagger configuration.
 
-AutoAuth is a lightweight, annotation‑driven authentication and authorization framework for Spring Boot.
-It eliminates the boilerplate typically required for JWT security, key management, revocation, and endpoint protection.
-Instead of wiring filters, keys, and validators manually, AutoAuth provides secure defaults and configures everything automatically.
-Focus on your endpoints — not your security plumbing.
+AutoAuth creates and validates RSA/RS256 JWTs, protects MVC endpoints, and exposes
+the authenticated user ID, roles, and custom claims. Your application owns user
+accounts, credential checking, login/refresh endpoints, and refresh-session policy.
 
-## ✨ Why AutoAuth?
+## Supported scope
 
-### ✔️ Ultra‑Fast Setup
-Install the dependency → add @EnableAutoAuth → provide keys → done.
-No custom Spring Security DSL required.
+- Access tokens, refresh tokens, and token-pair generation.
+- Bearer headers and HttpOnly authentication cookies.
+- CSRF protection whenever cookie authentication is enabled.
+- Public endpoint and role annotations, plus current-user helpers.
+- Automatic Swagger bearer authorization, cookie metadata, and CSRF headers.
 
-### ✔️ Annotation‑First Developer Experience
-Define your security rules directly in your controller code:
+Task tokens, account bans, token revocation stores, Redis/Caffeine, JWKS publication,
+dynamic rotation, OAuth/OIDC, and account persistence are outside the library.
+Rate limiting is available separately through [AutoLimit](https://github.com/AutoSprings/AutoLimit).
+
+Tokens remain valid until expiration plus the validator's 30-second clock tolerance.
+Clearing cookies removes the browser copies; it does not invalidate copied tokens.
+
+## Build and installation
+
+The baseline is **Java 21, Spring Boot 4.1.2 / Spring Framework 7, Spring Security 7,
+and springdoc-openapi 3.1.1**. Spring Boot 3 is not the supported target for this source tree.
+
+The current source version is `com.autoauth:autoauth:1.0.3-SNAPSHOT`.
+These changes do not publish it to Maven Central.
+
+```powershell
+.\gradlew.bat clean build
+.\gradlew.bat publishToMavenLocal
+```
+
+After building locally, add `mavenLocal()` to the consuming project's repositories:
+
+```groovy
+implementation 'com.autoauth:autoauth:1.0.3-SNAPSHOT'
+```
+
+AutoAuth's own build resolves dependencies from Maven Central. Tests use ephemeral
+keys and require no external store. The build produces library, source, and Javadoc JARs.
+
+## Configuration
+
+Supply RSA keys as PEM text, a filesystem path, a `file:` URI, or a `classpath:`
+resource. Private keys must be PKCS#8; public keys must be X.509 SubjectPublicKeyInfo.
+Keep production private keys outside source control.
+
+```yaml
+autoauth:
+  private-key: file:/run/secrets/jwt-private.pem
+  issuer: my-service
+  audience: my-api
+  expiration-minutes: 15
+  refresh-expiration-minutes: 10080
+  transport: COOKIE_AND_BEARER
+  cookie-name: AUTOAUTH
+  refresh-cookie-name: AUTOAUTH_REFRESH
+  cookie-secure: true
+  cookie-same-site: Lax
+  # Explicitly expose Swagger/OpenAPI routes for exploration.
+  swagger-public: true
+  # Only needed for an approved frontend on another origin.
+  allowed-origins:
+    - https://app.example.com
+```
+
+Boot discovers AutoAuth automatically. `@EnableAutoAuth` is available for explicit
+imports but is unnecessary in a normal Boot application. `autoauth.enabled=false`
+disables AutoAuth configuration.
+
+An RSA public key is derived from a supplied PKCS#8 CRT private key if omitted.
+Verifier-only services supply `autoauth.public-key` without a private key; they
+receive a validator but no generator bean. Keys must be at least 2048 bits and
+a supplied pair must match. Invalid settings and missing keys fail startup.
+
+`COOKIE_AND_BEARER` is the default. A bearer header takes precedence over the
+access cookie; the refresh cookie is never used for request authentication.
+Use `transport: BEARER` to ignore authentication cookies and disable AutoAuth's
+CSRF checks. In cookie-enabled mode, bearer requests also require CSRF protection
+for state changes, preventing a transport-based bypass.
+
+Use `cookie-secure: false` only for local HTTP development. `SameSite=None`
+requires Secure and is only necessary for cross-site deployments. CORS origins
+must be explicit; an empty list permits no cross-origin browser access.
+SameSite and CORS supplement CSRF protection.
+
+## Application login and refresh
+
+After your application verifies credentials:
+
+```java
+AutoAuthUser identity = new AutoAuthUser(
+    userId, List.of("USER"), Map.of("tenantId", tenantId));
+TokenPair tokens = jwtGenerator.generateTokenPair(identity);
+jwtCookies.write(response, tokens);
+```
+
+Inject `JwtGenerator` and `JwtCookies` into your login controller. The helper writes
+distinct access/refresh cookies with HttpOnly, Secure, SameSite, path, and lifetime
+attributes. Do not also return JWTs in JSON if they should be inaccessible to JavaScript.
+
+For bearer clients, return token strings through your application's chosen response.
+`generateAccessToken` and `generateRefreshToken` are available individually.
+Custom claims cannot replace `sub`, `roles`, `type`, `exp`, `iat`, `nbf`,
+`jti`, `iss`, or `aud`. Keep claims within browser cookie-size limits.
+
+Your refresh endpoint should:
+
+1. Read the configured refresh cookie or the bearer client's supplied refresh token.
+2. Call `jwtValidator.validateRefreshToken(token)`.
+3. Load the current account and roles from trusted application data.
+4. Apply your session/replay policy, then issue a new pair.
+
+Refresh tokens contain identity and purpose, not copied roles/custom claims.
+They cannot authenticate protected HTTP routes. Generating a pair does not revoke
+the previous pair. Session tracking, atomic refresh consumption, and replay detection
+remain application responsibilities.
+
+## Browser cookies and CSRF
+
+HttpOnly prevents JavaScript from reading the JWT cookie. It does not prevent CSRF.
+Cookie mode keeps Spring CSRF checks enabled, including public login/refresh/logout routes.
+
+Bootstrap before the first state-changing request:
+
+```javascript
+const csrf = await fetch("/autoauth/csrf", { credentials: "include" })
+  .then(response => response.json());
+
+await fetch("/api/login", {
+  method: "POST",
+  credentials: "include",
+  headers: {
+    "Content-Type": "application/json",
+    [csrf.headerName]: csrf.token
+  },
+  body: JSON.stringify({ username, password })
+});
+```
+
+Include the CSRF header and cookies on POST/PUT/PATCH/DELETE requests.
+`XSRF-TOKEN` is a separate readable CSRF cookie; JWT cookies remain HttpOnly.
+Cookies are host-only. GET endpoints must not change state. For a separate frontend
+origin, use the API base URL in both requests and approve that origin explicitly.
+Avoid enabling compression on the CSRF bootstrap response.
+
+Use `jwtCookies.clear(response)` in your own CSRF-protected logout endpoint.
+This clears both browser cookies without server-side token revocation.
+
+## Public endpoints and roles
 
 ```java
 @PublicEndpoint
-@GetMapping("/open")
+@GetMapping("/status")
+public String status() { return "ok"; }
 
 @RequiresRole("ADMIN")
 @GetMapping("/admin")
+public String admin() { return "admin"; }
 ```
 
-AutoAuth turns simple annotations into a full security configuration.
+Everything else requires a valid access token. Public annotations preserve HTTP
+methods and MVC mapping conditions. A public GET does not expose a protected POST;
+a public controller exposes only its registered handlers. An explicitly supplied
+invalid JWT returns 401 even on public endpoints.
 
-### ✔️ Built for Microservices
-AutoAuth automatically exposes an RFC‑compliant JWKS endpoint:
-```
-/.well-known/jwks.json
-```
+`autoauth.public-paths` is an explicit path-pattern escape hatch applying to all
+methods at matching paths. Prefer annotations for method-specific access.
 
-Other services (Go, Node, Python, Rust, etc.) can verify tokens instantly.
+Roles are case-sensitive and normalize one optional `ROLE_` prefix. `ADMIN`
+and `ROLE_ADMIN` are equivalent; `admin` is different. No hierarchy is implied.
+Use `@RequiresRole(value = {"ADMIN", "AUDITOR"}, requireAll = true)` to require both.
+Method rules override class rules. Enforcement uses Spring proxies; private/final
+methods and self-invocation are unsupported.
 
-### ✔️ Secure by Default
-AutoAuth handles the difficult parts automatically:
-
-- RS256 signing + validation
-- kid‑based key rotation
-- RFC‑compliant JWKS generation
-- Issuer & audience enforcement
-- Clock‑skew tolerance
-- Access + Refresh token support
-- jti‑based token revocation
-- User banning
-- Method‑level AOP authorization
-- Role normalization (ROLE_*)
-- Auto‑generated SecurityFilterChain
-
-### ✔️ AI‑Optimized
-Annotation‑driven design enables AI agents to scaffold entire auth systems using
-70–90% fewer tokens, reducing cost and improving quality.
-
-## 🔐 Core Features
-
-### 1. JWT Generation & Validation (RS256)
-
-- Access & Refresh tokens
-- PKCS#8 private key + X.509 public key loading
-- Custom claims
-- Deterministic kid
-- Issuer & audience validation
-- Optional EC / EdDSA support
-
-### 2. RFC‑Compliant JWKS Endpoint
-Automatically exposed at:
-```
-/.well-known/jwks.json
+```java
+AuthContext.getCurrentUser();
+AuthContext.getCurrentUserId();
+AuthContext.getCurrentUserRoles();
+AuthContext.getCustomClaim("tenantId");
 ```
 
-Includes:
-- Multi‑key rotation
-- Correct base64url encoding
-- Deterministic thumbprint‑based kid
-- Cache‑control headers
-- Compatible with all major languages
+The standard Spring Security principal is an `AutoAuthUser`. Roles are immutable.
+Custom-claim maps are copied shallowly; use immutable nested claim values.
 
-### 3. Automatic SecurityFilterChain
-AutoAuth generates a complete, production‑ready security configuration:
+## Swagger
 
-- @PublicEndpoint methods → permitAll
-- All others → JWT required
-- Stateless sessions
-- CSRF disabled
-- Configurable CORS defaults
+AutoAuth includes Swagger/OpenAPI and configures bearer JWT authorization, cookie
+authentication metadata, and automatic `X-XSRF-TOKEN` headers in Swagger UI.
 
-No custom DSL — everything is inferred automatically.
+Enable `autoauth.swagger-public=true` for local exploration, then open
+`/swagger-ui/index.html`. Paste an access token into **Authorize**, or call your
+own login endpoint through Swagger to receive HttpOnly cookies. The browser sends
+them automatically; Swagger cannot directly write an HttpOnly cookie. Safe page
+requests bootstrap the CSRF cookie automatically.
 
-### 4. Authorization Annotations
+Public annotated operations have no authentication requirement. Role metadata uses
+`x-autoauth-roles` and `x-autoauth-require-all`. A custom `OpenAPI` bean owns its
+top-level security schemes. Custom springdoc paths need explicit route permissions.
 
-**@PublicEndpoint**
-Marks a method or controller as publicly accessible.
+## Customization and migration
 
-**@RequiresRole("ADMIN")**
-Enforces role‑based access control.
+Application-provided validators, key providers, clocks, and cookie helpers replace
+the defaults. An application-provided `SecurityFilterChain` replaces AutoAuth's
+default chain; its owner must configure JWT authentication, public routes, and CSRF.
 
-### 5. User Banning
+See [scope/API migration](docs/migration-simple-jwt.md) and
+[rate limiting migration](docs/migration-autolimit.md).
 
-- `banned:{userId}` cache key
-- Tokens instantly denied
-- Refresh tokens invalidated
-- Distributed cache support (Redis recommended)
+## License
 
-### 6. Token Revocation (Blacklist)
-
-- Revokes via jti
-- TTL matches token expiration
-- Supports Redis or in‑memory storage
-
-### 7. KeyLoader Enhancements
-
-- PEM parsing
-- PKCS#1 → PKCS#8 auto‑detection
-- Certificate (X.509) support
-- Internal caching for performance
-
-### 8. Full Test Suite
-Covers:
-- Token lifecycle
-- JWKS correctness
-- Revocation logic
-- Banning logic
-- AOP role enforcement
-- Filter behavior
-
-### 9. Example Application Included
-Demonstrates:
-- Login
-- Access + Refresh token issuance
-- Refresh flow
-- Admin + public routes
-- Revocation
-- JWKS verification
-
-## 🧭 Use Cases
-
-- Microservices authentication
-- Internal service‑to‑service authorization
-- Role‑based access control
-- Optional rate limiting with the independent [AutoLimit](https://github.com/AutoSprings/AutoLimit) library
-- User banning + incident response
-- AI‑assisted development with minimal boilerplate
-
-## Rate limiting migration
-
-Rate limiting is now provided by the independent [AutoLimit](https://github.com/AutoSprings/AutoLimit) library.
-AutoAuth has no AutoLimit dependency and installs no IP limiter or endpoint quotas.
-Existing limiter consumers must follow the [migration guide](docs/migration-autolimit.md).
-
-## Running tests
-
-The JUnit 5 suite lives in `src/test/java`. It covers JWT generation and validation,
-key loading and rotation, JWKS, token revocation and user bans, role checks,
-authentication filters, error responses, and Spring configuration.
-Tests generate their own keys and mock Redis; no external services are required.
-Use Java 21 and the included Gradle wrapper:
-
-```powershell
-.\gradlew.bat test         # Run the test suite
-.\gradlew.bat build        # Build the library and run tests
-.\gradlew.bat clean build  # Rebuild and run tests from scratch
-```
-
-On macOS/Linux, use `./gradlew` instead. Gradle's `build` and `check` tasks already
-depend on `test`, so a failing test fails the build. The HTML test report is at
-`build/reports/tests/test/index.html`.
-
-## Installation
-
-```xml
-<dependency>
-    <groupId>com.autoauth</groupId>
-    <artifactId>autoauth</artifactId>
-    <version>1.0.0</version>
-</dependency>
-```
-
-## 💡 Why AutoAuth Instead of Spring Authorization Server?
-Choose AutoAuth when you want:
-
-- JWT security without OAuth/OIDC complexity
-- Simple annotations instead of large security DSLs
-- Instant cross‑language token verification (JWKS)
-- Built‑in revocation and banning
-- Lightweight microservice‑friendly auth
-- AI‑friendly, low‑boilerplate design
-
-## 📚 Documentation
-
-For more information, see the [documentation](./docs).
-
-## 🚀 Summary
-AutoAuth provides production-grade JWT authentication and authorization with almost no configuration.
-It delivers secure defaults, clean annotations, microservice compatibility, and a development experience that AI can build on with dramatically fewer tokens.
-
-## 📄 License
-
-MIT
+MIT.

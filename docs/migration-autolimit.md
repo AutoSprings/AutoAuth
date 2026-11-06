@@ -1,7 +1,7 @@
 # Moving bundled rate limiting to AutoLimit
 
 AutoAuth now handles authentication and authorization independently. JWTs, keys,
-roles, bans, and token revocation retain their existing APIs. It no longer
+roles, and claims remain in scope. The later [JWT scope cleanup](migration-simple-jwt.md) removes built-in bans and revocation stores. It no longer
 contains limiter annotations, aspects, services, filters, exceptions, identity
 interfaces, configuration properties, or limiter beans. No AutoLimit dependency
 is introduced; authentication-only consumers do not need it.

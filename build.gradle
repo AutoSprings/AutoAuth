@@ -17,17 +17,16 @@ java {
 
 repositories {
     mavenCentral()
-    mavenLocal()
 }
 
 dependencies {
-    implementation platform('org.springframework.boot:spring-boot-dependencies:3.2.4')
-    annotationProcessor platform('org.springframework.boot:spring-boot-dependencies:3.2.4')
+    implementation platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
+    annotationProcessor platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
 
     implementation 'org.springframework.boot:spring-boot-autoconfigure'
 
     api 'org.springframework.boot:spring-boot-starter-security'
-    api 'org.springframework.boot:spring-boot-starter-web'
+    api 'org.springframework.boot:spring-boot-starter-webmvc'
 
     implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.5'
@@ -36,19 +35,15 @@ dependencies {
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     compileOnly 'org.springframework.boot:spring-boot-configuration-processor'
 
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.springframework.security:spring-security-test'
-    api 'org.springframework.boot:spring-boot-starter-aop'
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
+    api 'org.springframework.boot:spring-boot-starter-aspectj'
 
-    testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
 
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17'
-
-    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-    implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
 }
 
 tasks.named('test') {
