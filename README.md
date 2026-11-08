@@ -175,6 +175,10 @@ methods at matching paths. Prefer annotations for method-specific access.
 Roles are case-sensitive and normalize one optional `ROLE_` prefix. `ADMIN`
 and `ROLE_ADMIN` are equivalent; `admin` is different. No hierarchy is implied.
 Use `@RequiresRole(value = {"ADMIN", "AUDITOR"}, requireAll = true)` to require both.
+Every declaration must contain at least one role, including `requireAll = true`.
+Empty/blank names, surrounding whitespace, a bare `ROLE_`, and repeated `ROLE_`
+prefixes fail bean initialization with the declaration and invalid entry identified.
+Superclass and interface declarations are also validated, even when overridden.
 Method rules override class rules. Enforcement uses Spring proxies. AutoAuth rejects
 role-protected beans during initialization when the configured proxy cannot enforce
 their rules, normally failing application startup. Lazy beans are checked when created.

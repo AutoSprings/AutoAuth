@@ -10,8 +10,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import com.autoauth.model.AutoAuthUser;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,6 +25,53 @@ class RoleProtectionValidatorTest {
 
     @AfterEach
     void clearAuthentication() { SecurityContextHolder.clearContext(); }
+
+    @Test
+    void rejectsEmptyAnyAndAllDeclarationsAtStartup() {
+        assertInvalidDeclaration(EmptyAny.class, "at least one role", "admin");
+        assertInvalidDeclaration(EmptyAll.class, "at least one role", "admin");
+    }
+
+    @Test
+    void rejectsInvalidRoleNamesAtStartup() {
+        for (Class<?> type : List.of(BlankRole.class, WhitespaceRole.class, BarePrefix.class, RepeatedPrefix.class)) {
+            assertInvalidDeclaration(type, "role at index 0 is invalid", "admin");
+        }
+        assertInvalidDeclaration(MixedRoles.class, "role at index 1 is invalid", "admin");
+    }
+
+    @Test
+    void validatesClassDeclarationsEvenWhenAllMethodsOverrideThem() {
+        assertInvalidDeclaration(InvalidClassRule.class, "at least one role", "InvalidClassRule");
+    }
+
+    @Test
+    void validatesInterfaceAndSuperclassDeclarations() {
+        assertInvalidDeclaration(InvalidInterfaceService.class, "at least one role", "InvalidContract.admin");
+        assertInvalidDeclaration(InvalidInheritedService.class, "role at index 0 is invalid", "InvalidBase.admin");
+        assertInvalidDeclaration(InvalidInterfaceClassService.class, "at least one role", "InvalidClassContract");
+    }
+
+    @Test
+    void acceptsValidRoleNamesAndKeepsExistingAuthorizationSemantics() {
+        runner.withBean(ValidRoleNames.class).run(context -> {
+            assertThat(context).hasNotFailed();
+            ValidRoleNames service = context.getBean(ValidRoleNames.class);
+            assertThatThrownBy(service::admin).isInstanceOf(AccessDeniedException.class);
+            var user = new AutoAuthUser("alice", List.of("ADMIN", "team:read", "user"), null);
+            SecurityContextHolder.getContext().setAuthentication(
+                    new UsernamePasswordAuthenticationToken(user, null, List.of()));
+            assertThat(service.admin()).isEqualTo("admin");
+        });
+    }
+
+    private void assertInvalidDeclaration(Class<?> type, String reason, String declaration) {
+        runner.withBean(type).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).hasStackTraceContaining("Invalid @RequiresRole")
+                    .hasStackTraceContaining(declaration).hasStackTraceContaining(reason);
+        });
+    }
 
     @Test
     void rejectsPrivateAndFinalMvcHandlersBeforeServingRequests() {
@@ -110,6 +160,34 @@ class RoleProtectionValidatorTest {
     @Configuration(proxyBeanMethods = false)
     @EnableAspectJAutoProxy(proxyTargetClass = true)
     static class ClassProxies {}
+
+    @RestController
+    public static class EmptyAny { @RequiresRole({}) public void admin() {} }
+    public static class EmptyAll { @RequiresRole(value = {}, requireAll = true) public void admin() {} }
+    public static class BlankRole { @RequiresRole("") public void admin() {} }
+    public static class WhitespaceRole { @RequiresRole(" ADMIN ") public void admin() {} }
+    public static class BarePrefix { @RequiresRole("ROLE_") public void admin() {} }
+    public static class RepeatedPrefix { @RequiresRole("ROLE_ROLE_ADMIN") public void admin() {} }
+    public static class MixedRoles { @RequiresRole({"ADMIN", " "}) public void admin() {} }
+    @RequiresRole({})
+    public static class InvalidClassRule { @RequiresRole("ADMIN") public void admin() {} }
+    public interface InvalidContract { @RequiresRole({}) void admin(); }
+    public static class InvalidInterfaceService implements InvalidContract {
+        @RequiresRole("ADMIN") public void admin() {}
+    }
+    @RequiresRole({})
+    public interface InvalidClassContract { void admin(); }
+    public static class InvalidInterfaceClassService implements InvalidClassContract {
+        @RequiresRole("ADMIN") public void admin() {}
+    }
+    public static class InvalidBase { @RequiresRole(" ") public void admin() {} }
+    public static class InvalidInheritedService extends InvalidBase {
+        @Override @RequiresRole("ADMIN") public void admin() {}
+    }
+    public static class ValidRoleNames {
+        @RequiresRole(value = {"ROLE_ADMIN", "ADMIN", "team:read", "user"}, requireAll = true)
+        public String admin() { return "admin"; }
+    }
 
     @RestController
     public static class PrivateHandler {
