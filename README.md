@@ -175,8 +175,33 @@ methods at matching paths. Prefer annotations for method-specific access.
 Roles are case-sensitive and normalize one optional `ROLE_` prefix. `ADMIN`
 and `ROLE_ADMIN` are equivalent; `admin` is different. No hierarchy is implied.
 Use `@RequiresRole(value = {"ADMIN", "AUDITOR"}, requireAll = true)` to require both.
-Method rules override class rules. Enforcement uses Spring proxies; private/final
-methods and self-invocation are unsupported.
+Every declaration must contain at least one role, including `requireAll = true`.
+Empty/blank names, surrounding whitespace, a bare `ROLE_`, and repeated `ROLE_`
+prefixes fail bean initialization with the declaration and invalid entry identified.
+Superclass and interface declarations are also validated, even when overridden.
+Role rules resolve in this order:
+
+1. The nearest annotated method in the implementation's class hierarchy.
+2. The most specific annotated interface method.
+3. The nearest annotated type in the implementation's class hierarchy.
+4. The most specific annotated interface type, for methods exposed by that interface.
+
+An unannotated override inherits the applicable rule. Within interfaces, an annotated
+child declaration overrides its annotated ancestor. Unrelated interface declarations
+must agree on the role set (ignoring order, duplicates, and the optional `ROLE_` prefix)
+and `requireAll`; otherwise bean initialization fails with the method and conflicting
+interfaces identified. An explicit implementation method rule resolves conflicting
+interface method rules. A class-level rule cannot override a method-level conflict.
+Enforcement, startup validation, and Swagger role metadata use the same resolver.
+
+Enforcement uses Spring proxies. AutoAuth rejects
+role-protected beans during initialization when the configured proxy cannot enforce
+their rules, normally failing application startup. Lazy beans are checked when created.
+Explicit private/static role declarations are rejected. Class proxies cannot protect
+final methods/classes; JDK proxies can protect final implementations through interface
+methods, but protected methods must be exposed by the proxy's interfaces. Errors name
+the affected bean and method. Private/static helpers under a class-level rule are not
+protected. Self-invocation bypasses the proxy and remains unsupported.
 
 ```java
 AuthContext.getCurrentUser();

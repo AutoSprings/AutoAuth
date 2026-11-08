@@ -1,0 +1,198 @@
+diff --git a/src/test/java/com/autoauth/aop/RateLimitAspectTest.java b/src/test/java/com/autoauth/aop/RateLimitAspectTest.java
+index e4a396b..ed76c56 100644
+--- a/src/test/java/com/autoauth/aop/RateLimitAspectTest.java
++++ b/src/test/java/com/autoauth/aop/RateLimitAspectTest.java
+@@ -3,19 +3,19 @@ package com.autoauth.aop;
+ import com.autoauth.annotation.RateLimit;
+ import com.autoauth.annotation.UserQuota;
+ import com.autoauth.exception.RateLimitExceededException;
+-import com.autoauth.model.AutoAuthUser;
+ import com.autoauth.ratelimit.RateLimitService;
++import com.autolimit.identity.CallerIdentity;
++import com.autolimit.identity.CallerIdentityResolver;
+ import org.junit.jupiter.api.AfterEach;
+ import org.junit.jupiter.api.BeforeEach;
+ import org.junit.jupiter.api.Test;
+ import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
+ import org.springframework.mock.web.MockHttpServletRequest;
+-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+-import org.springframework.security.core.context.SecurityContextHolder;
+ import org.springframework.web.context.request.RequestContextHolder;
+ import org.springframework.web.context.request.ServletRequestAttributes;
+ 
+ import java.util.List;
++import java.util.Optional;
+ import java.util.concurrent.TimeUnit;
+ 
+ import static org.assertj.core.api.Assertions.*;
+@@ -23,24 +23,25 @@ import static org.mockito.Mockito.*;
+ 
+ class RateLimitAspectTest {
+     private final RateLimitService limiter = mock(RateLimitService.class);
++    private final CallerIdentityResolver identityResolver = mock(CallerIdentityResolver.class);
+     private LimitedService service;
+ 
+     @BeforeEach
+     void setUp() {
++        when(identityResolver.resolve()).thenReturn(Optional.empty());
+         AspectJProxyFactory factory = new AspectJProxyFactory(new LimitedService());
+-        factory.addAspect(new RateLimitAspect(limiter));
++        factory.addAspect(new RateLimitAspect(limiter, identityResolver));
+         service = factory.getProxy();
+     }
+ 
+     @AfterEach
+     void clearContext() {
+-        SecurityContextHolder.clearContext();
+         RequestContextHolder.resetRequestAttributes();
+     }
+ 
+     @Test
+     void choosesHighestMatchingRoleQuotaCaseInsensitively() {
+-        authenticate("premium", "ENTERPRISE");
++        resolveCaller("alice", "premium", "ENTERPRISE");
+         when(limiter.isAllowed("user:alice:tiered", 20, 30_000)).thenReturn(true);
+         assertThat(service.tiered()).isEqualTo("ok");
+         verify(limiter).isAllowed("user:alice:tiered", 20, 30_000);
+@@ -48,12 +49,34 @@ class RateLimitAspectTest {
+ 
+     @Test
+     void unmatchedRolesUseFallbackQuota() {
+-        authenticate("USER");
++        resolveCaller("alice", "USER");
+         when(limiter.isAllowed("user:alice:tiered", 2, 30_000)).thenReturn(true);
+         service.tiered();
+         verify(limiter).isAllowed("user:alice:tiered", 2, 30_000);
+     }
+ 
++    @Test
++    void callerWithoutRolesUsesUserKeyAndFallbackQuota() {
++        resolveCaller("bob");
++        when(limiter.isAllowed("user:bob:tiered", 2, 30_000)).thenReturn(true);
++        service.tiered();
++        verify(limiter).isAllowed("user:bob:tiered", 2, 30_000);
++    }
++
++    @Test
++    void resolvesCallerForEachInvocation() {
++        when(identityResolver.resolve())
++                .thenReturn(Optional.of(new CallerIdentity("alice", List.of("PREMIUM"))))
++                .thenReturn(Optional.of(new CallerIdentity("bob", List.of("ENTERPRISE"))));
++        when(limiter.isAllowed("user:alice:tiered", 10, 30_000)).thenReturn(true);
++        when(limiter.isAllowed("user:bob:tiered", 20, 30_000)).thenReturn(true);
++        service.tiered();
++        service.tiered();
++        verify(limiter).isAllowed("user:alice:tiered", 10, 30_000);
++        verify(limiter).isAllowed("user:bob:tiered", 20, 30_000);
++        verify(identityResolver, times(2)).resolve();
++    }
++
+     @Test
+     void anonymousRequestsUseFirstForwardedIp() {
+         MockHttpServletRequest request = new MockHttpServletRequest();
+@@ -90,9 +113,8 @@ class RateLimitAspectTest {
+         verify(limiter).isAllowed("ip:unknown:override", 1, 60_000);
+     }
+ 
+-    private void authenticate(String... roles) {
+-        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+-                new AutoAuthUser("alice", List.of(roles), null), null, List.of()));
++    private void resolveCaller(String userId, String... roles) {
++        when(identityResolver.resolve()).thenReturn(Optional.of(new CallerIdentity(userId, List.of(roles))));
+     }
+ 
+     @RateLimit(fallbackRequests = 3)
+diff --git a/src/test/java/com/autoauth/config/AutoAuthConfigurationTest.java b/src/test/java/com/autoauth/config/AutoAuthConfigurationTest.java
+index c165fe5..8e28205 100644
+--- a/src/test/java/com/autoauth/config/AutoAuthConfigurationTest.java
++++ b/src/test/java/com/autoauth/config/AutoAuthConfigurationTest.java
+@@ -5,6 +5,7 @@ import com.autoauth.aop.RoleAspect;
+ import com.autoauth.annotation.PublicEndpoint;
+ import com.autoauth.annotation.RateLimit;
+ import com.autoauth.annotation.RequiresRole;
++import com.autoauth.annotation.UserQuota;
+ import com.autoauth.blacklist.CafeTokenBlackList;
+ import com.autoauth.blacklist.TokenBlackList;
+ import com.autoauth.controller.JwksController;
+@@ -15,6 +16,8 @@ import com.autoauth.jwt.JwtValidator;
+ import com.autoauth.model.AutoAuthUser;
+ import com.autoauth.ratelimit.RateLimitService;
+ import com.autoauth.support.TestKeys;
++import com.autolimit.identity.CallerIdentity;
++import com.autolimit.identity.CallerIdentityResolver;
+ import io.swagger.v3.oas.models.OpenAPI;
+ import io.swagger.v3.oas.models.security.SecurityScheme;
+ import org.junit.jupiter.api.Test;
+@@ -33,6 +36,8 @@ import java.time.Clock;
+ import java.time.Instant;
+ import java.time.ZoneOffset;
+ import java.util.List;
++import java.util.Optional;
++import java.util.concurrent.atomic.AtomicReference;
+ 
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+@@ -51,7 +56,9 @@ class AutoAuthConfigurationTest {
+                     .hasSingleBean(JwtGenerator.class).hasSingleBean(JwtValidator.class)
+                     .hasSingleBean(RoleAspect.class).hasSingleBean(RateLimitAspect.class)
+                     .hasSingleBean(RateLimitService.class).hasSingleBean(SecurityFilterChain.class)
+-                    .hasSingleBean(AutoAuthRateLimitExceptionResolver.class).hasSingleBean(Clock.class);
++                    .hasSingleBean(AutoAuthRateLimitExceptionResolver.class).hasSingleBean(Clock.class)
++                    .hasSingleBean(CallerIdentityResolver.class);
++            assertThat(context.getBean(CallerIdentityResolver.class).resolve()).isEmpty();
+             assertThat(context.getBean(TokenBlackList.class)).isInstanceOf(CafeTokenBlackList.class);
+             assertThat(context).doesNotHaveBean(JwksController.class);
+             AutoAuthProperties properties = context.getBean(AutoAuthProperties.class);
+@@ -165,6 +172,43 @@ class AutoAuthConfigurationTest {
+         });
+     }
+ 
++    @Test
++    void defaultResolverSharesIpQuotaAcrossAuthenticatedUsers() {
++        withKeys().run(context -> {
++            MockMvc mvc = mockMvc(context);
++            JwtGenerator generator = context.getBean(JwtGenerator.class);
++            String alice = generator.generateAccessToken(new AutoAuthUser("alice", List.of("PREMIUM"), null));
++            String bob = generator.generateAccessToken(new AutoAuthUser("bob", List.of("PREMIUM"), null));
++            mvc.perform(get("/api/limited").header("Authorization", "Bearer " + alice))
++                    .andExpect(status().isOk());
++            mvc.perform(get("/api/limited").header("Authorization", "Bearer " + bob))
++                    .andExpect(status().isOk());
++            mvc.perform(get("/api/limited").header("Authorization", "Bearer " + alice))
++                    .andExpect(status().isTooManyRequests());
++        });
++    }
++
++    @Test
++    void applicationProvidedResolverControlsUserQuotasWithoutAuthentication() {
++        AtomicReference<CallerIdentity> caller = new AtomicReference<>(new CallerIdentity("alice", List.of("PREMIUM")));
++        CallerIdentityResolver resolver = () -> Optional.of(caller.get());
++        withKeys().withBean(CallerIdentityResolver.class, () -> resolver).run(context -> {
++            assertThat(context).hasNotFailed().hasSingleBean(CallerIdentityResolver.class);
++            assertThat(context.getBean(CallerIdentityResolver.class)).isSameAs(resolver);
++            MockMvc mvc = mockMvc(context);
++            for (int request = 0; request < 3; request++) {
++                mvc.perform(get("/api/limited")).andExpect(status().isOk());
++            }
++            mvc.perform(get("/api/limited")).andExpect(status().isTooManyRequests());
++
++            caller.set(new CallerIdentity("bob", List.of("USER")));
++            for (int request = 0; request < 2; request++) {
++                mvc.perform(get("/api/limited")).andExpect(status().isOk());
++            }
++            mvc.perform(get("/api/limited")).andExpect(status().isTooManyRequests());
++        });
++    }
++
+     @Test
+     void corsPreflightAllowsConfiguredOriginAndRejectsOtherOrigins() {
+         withKeys().withPropertyValues("autoauth.allowed-origins[0]=https://example.test").run(context -> {
+@@ -202,7 +246,7 @@ class AutoAuthConfigurationTest {
+         @GetMapping("/private") public String secured() { return "private"; }
+         @PostMapping("/private") public String post() { return "posted"; }
+         @RequiresRole("ADMIN") @GetMapping("/admin") public String admin() { return "admin"; }
+-        @PublicEndpoint @RateLimit(fallbackRequests = 2)
++        @PublicEndpoint @RateLimit(value = @UserQuota(role = "PREMIUM", maxRequests = 3), fallbackRequests = 2)
+         @GetMapping("/limited") public String limited() { return "limited"; }
+     }
+ 

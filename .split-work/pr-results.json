@@ -1,0 +1,12 @@
+﻿{
+    "autolimit":  {
+                      "number":  1,
+                      "url":  "https://github.com/AutoSprings/AutoLimit/pull/1",
+                      "sha":  "d57bb7cc82451a62231df5a7dafad8104a5f8cdd"
+                  },
+    "autoauth":  {
+                     "number":  41,
+                     "url":  "https://github.com/AutoSprings/AutoAuth/pull/41",
+                     "sha":  "a11edc9b85cd14bdbb54c45805fa0eebb8a72111"
+                 }
+}

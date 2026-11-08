@@ -1,12 +1,14 @@
 package com.autoauth.config;
 
 import com.autoauth.aop.RoleAspect;
+import com.autoauth.aop.RoleProtectionValidator;
 import com.autoauth.controller.CsrfController;
 import com.autoauth.jwt.*;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.*;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import java.time.Clock;
 
 @AutoConfiguration
@@ -16,6 +18,11 @@ import java.time.Clock;
 @Import({SecurityFilterChainConfig.class, AutoAuthSwaggerConfig.class})
 @EnableAspectJAutoProxy
 public class AutoAuthAutoConfiguration {
+    @Bean
+    public static RoleProtectionValidator roleProtectionValidator(ConfigurableListableBeanFactory beanFactory) {
+        return new RoleProtectionValidator(beanFactory);
+    }
+
     @Bean
     @ConditionalOnMissingBean
     public JwtKeyProvider jwtKeyProvider(AutoAuthProperties properties) { return new JwtKeyProvider(properties); }
