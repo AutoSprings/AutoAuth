@@ -24,7 +24,6 @@ import java.util.Set;
 /** Rejects role declarations that Spring's configured proxy cannot enforce. */
 public final class RoleProtectionValidator implements BeanPostProcessor {
     private final ConfigurableListableBeanFactory beanFactory;
-    private final RoleAspect rules = new RoleAspect();
 
     public RoleProtectionValidator(ConfigurableListableBeanFactory beanFactory) {
         this.beanFactory = beanFactory;
@@ -36,7 +35,7 @@ public final class RoleProtectionValidator implements BeanPostProcessor {
         validateDeclarations(targetClass, beanName, new HashSet<>());
         boolean classProxy = usesClassProxy(targetClass, beanName);
         for (Method method : ReflectionUtils.getAllDeclaredMethods(targetClass)) {
-            if (!requiresProtection(method, targetClass)) continue;
+            if (!requiresProtection(method, targetClass, beanName)) continue;
             int modifiers = method.getModifiers();
             if (Modifier.isPrivate(modifiers) || Modifier.isStatic(modifiers)) {
                 throw failure(beanName, method, "private and static methods cannot be intercepted by Spring proxies");
@@ -57,7 +56,7 @@ public final class RoleProtectionValidator implements BeanPostProcessor {
     public Object postProcessAfterInitialization(Object bean, String beanName) {
         Class<?> targetClass = AopUtils.getTargetClass(bean);
         for (Method method : ReflectionUtils.getAllDeclaredMethods(targetClass)) {
-            if (!requiresProtection(method, targetClass)) continue;
+            if (!requiresProtection(method, targetClass, beanName)) continue;
             if (AopUtils.isCglibProxy(bean) && Modifier.isFinal(method.getModifiers())) {
                 throw failure(beanName, method, "final methods cannot be intercepted by the actual class proxy");
             }
@@ -66,10 +65,11 @@ public final class RoleProtectionValidator implements BeanPostProcessor {
                 throw failure(beanName, method, "no AutoAuth role advisor protects this bean");
             }
             if (AopUtils.isJdkDynamicProxy(bean)) {
+                Method specific = BridgeMethodResolver.findBridgedMethod(AopUtils.getMostSpecificMethod(method, targetClass));
                 boolean exposed = Arrays.stream(advised.getProxiedInterfaces())
                         .flatMap(contract -> Arrays.stream(contract.getMethods())).anyMatch(proxyMethod ->
                         BridgeMethodResolver.findBridgedMethod(AopUtils.getMostSpecificMethod(proxyMethod, targetClass))
-                                .equals(method));
+                                .equals(specific));
                 if (!exposed) {
                     throw failure(beanName, method, "the protected method is not exposed by the JDK proxy; "
                             + "add it to an interface or use a class proxy");
@@ -79,20 +79,24 @@ public final class RoleProtectionValidator implements BeanPostProcessor {
         return bean;
     }
 
-    private boolean requiresProtection(Method method, Class<?> targetClass) {
+    private boolean requiresProtection(Method method, Class<?> targetClass, String beanName) {
         if (method.getDeclaringClass() == Object.class || method.isBridge() || method.isSynthetic()) return false;
         boolean explicit = AnnotatedElementUtils.hasAnnotation(method, RequiresRole.class);
         // A class rule protects callable methods, not private/static implementation helpers.
         if (!explicit && (Modifier.isPrivate(method.getModifiers()) || Modifier.isStatic(method.getModifiers()))) return false;
-        return rules.matches(method, targetClass);
+        try {
+            return RoleRuleResolver.resolve(method, targetClass) != null;
+        } catch (IllegalStateException exception) {
+            throw failure(beanName, method, exception.getMessage());
+        }
     }
 
     private void validateDeclarations(Class<?> type, String beanName, Set<Class<?>> visited) {
         if (type == null || type == Object.class || !visited.add(type)) return;
-        validateDeclaration(type.getDeclaredAnnotation(RequiresRole.class), type.toGenericString(), beanName);
+        validateDeclaration(RoleRuleResolver.declaredRule(type), type.toGenericString(), beanName);
         for (Method method : type.getDeclaredMethods()) {
             if (!method.isBridge() && !method.isSynthetic()) {
-                validateDeclaration(method.getDeclaredAnnotation(RequiresRole.class), method.toGenericString(), beanName);
+                validateDeclaration(RoleRuleResolver.declaredRule(method), method.toGenericString(), beanName);
             }
         }
         for (Class<?> contract : type.getInterfaces()) validateDeclarations(contract, beanName, visited);

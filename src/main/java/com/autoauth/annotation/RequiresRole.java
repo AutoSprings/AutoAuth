@@ -13,7 +13,13 @@ import java.lang.annotation.*;
  * Class proxies cannot protect final methods/classes; JDK proxies can protect final
  * implementations when the method is exposed through an interface.
  * Self-invocation bypasses the proxy and is unsupported.
- * A method rule overrides a class rule.
+ * Resolution order: nearest annotated implementation/superclass method, most specific
+ * annotated interface method, nearest annotated implementation/superclass type, then
+ * most specific annotated interface type. An unannotated override inherits its rule.
+ * Interface type rules apply only to methods exposed by that interface.
+ * Unrelated interface rules must agree on normalized role sets and requireAll;
+ * unresolved conflicts fail bean initialization. Add an explicit implementation
+ * method rule to resolve conflicting interface method rules.
  */
 @Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
