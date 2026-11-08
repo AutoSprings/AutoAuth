@@ -175,8 +175,14 @@ methods at matching paths. Prefer annotations for method-specific access.
 Roles are case-sensitive and normalize one optional `ROLE_` prefix. `ADMIN`
 and `ROLE_ADMIN` are equivalent; `admin` is different. No hierarchy is implied.
 Use `@RequiresRole(value = {"ADMIN", "AUDITOR"}, requireAll = true)` to require both.
-Method rules override class rules. Enforcement uses Spring proxies; private/final
-methods and self-invocation are unsupported.
+Method rules override class rules. Enforcement uses Spring proxies. AutoAuth rejects
+role-protected beans during initialization when the configured proxy cannot enforce
+their rules, normally failing application startup. Lazy beans are checked when created.
+Explicit private/static role declarations are rejected. Class proxies cannot protect
+final methods/classes; JDK proxies can protect final implementations through interface
+methods, but protected methods must be exposed by the proxy's interfaces. Errors name
+the affected bean and method. Private/static helpers under a class-level rule are not
+protected. Self-invocation bypasses the proxy and remains unsupported.
 
 ```java
 AuthContext.getCurrentUser();

@@ -35,6 +35,21 @@ class AutoAuthConfigurationTest {
             .withUserConfiguration(WebConfig.class);
 
     @Test
+    void autoConfigurationRejectsUnprotectableRoleHandlers() {
+        withKeys().withBean(UnprotectableRoutes.class).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).hasStackTraceContaining("Cannot enforce @RequiresRole")
+                    .hasStackTraceContaining("UnprotectableRoutes.admin").hasStackTraceContaining("final");
+        });
+    }
+
+    @RestController
+    public static class UnprotectableRoutes {
+        @RequiresRole("ADMIN") @GetMapping("/unprotectable")
+        public final String admin() { return "admin"; }
+    }
+
+    @Test
     void defaultCookieAndBearerBeansAndSwaggerAreConfigured() {
         withKeys().run(context -> {
             assertThat(context).hasNotFailed().hasSingleBean(JwtGenerator.class).hasSingleBean(JwtValidator.class)
