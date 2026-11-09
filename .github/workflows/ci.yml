@@ -35,6 +35,7 @@ jobs:
           cache-dependency-path: |
             build.gradle
             settings.gradle
+            gradle.lockfile
             gradle/wrapper/gradle-wrapper.properties
 
       - name: Build and run all tests
@@ -61,6 +62,7 @@ jobs:
           $required = @(
             'com.autoauth.jwt.JwtTokenTest',
             'com.autoauth.config.AutoAuthConfigurationTest',
+            'com.autoauth.config.JsonCompatibilityTest',
             'com.autoauth.config.SwaggerConsumerTest'
           )
           $missing = @($required | Where-Object { $_ -notin $active })

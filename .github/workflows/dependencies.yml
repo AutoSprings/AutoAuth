@@ -1,0 +1,84 @@
+name: Dependencies
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Locked dependency inventory and vulnerability scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            build.gradle
+            settings.gradle
+            gradle.lockfile
+            gradle/wrapper/gradle-wrapper.properties
+      - name: Resolve and report locked dependencies
+        id: report
+        run: bash ./gradlew --no-daemon --console=plain dependencyReport
+      - name: Scan the complete lockfile against OSV
+        uses: google/osv-scanner-action/osv-scanner-action@0a65f82af05cd58cf587827b0bb0489548c18346 # v2.7.0
+        with:
+          scan-args: |-
+            --lockfile=./gradle.lockfile
+            --format=json
+            --output=./build/reports/dependencies/osv.json
+      - name: Retain dependency inventory and scan results
+        if: ${{ !cancelled() && steps.report.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-reports
+          path: |
+            gradle.lockfile
+            build/reports/dependencies/
+          if-no-files-found: error
+          retention-days: 14
+
+  submit:
+    name: Submit dependency graph from trusted main
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Make the wrapper executable for the submission action
+        run: chmod +x gradlew
+      - name: Resolve and submit production and development dependencies
+        uses: gradle/actions/dependency-submission@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        env:
+          DEPENDENCY_GRAPH_RUNTIME_INCLUDE_CONFIGURATIONS: '^runtimeClasspath$'
+        with:
+          cache-provider: basic
+          dependency-resolution-task: dependencyReport
+          additional-arguments: --no-daemon --console=plain
+          validate-wrappers: true
+          artifact-retention-days: 14
