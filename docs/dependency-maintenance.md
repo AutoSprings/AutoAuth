@@ -67,6 +67,11 @@ which does not imply MVC is using Jackson 2 databind. See
 and [JJWT's Jackson integration](https://github.com/jwtk/jjwt/tree/0.12.5#jackson-json-processor).
 
 Jackson 2 is explicitly aligned through its BOM to **2.22.3** for the fixes below.
+Both BOMs are exported through the Gradle API variant, and publication records
+resolved direct dependency versions. The Jackson 2 runtime modules are declared
+directly so Maven consumers also receive the patched versions rather than JJWT's
+older transitive defaults. Publication verification checks the actual Maven
+application's packaged Jackson/Spring versions as well as both running consumers.
 Boot's Jackson 3 family resolves to **3.1.7**. Excluding Jackson 2 would break the
 JJWT adapter. `JsonCompatibilityTest` exercises HTTP request -> JWT generation ->
 JWT validation -> authenticated HTTP response, preserving nested claims, numbers,

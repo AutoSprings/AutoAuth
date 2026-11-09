@@ -1,10 +1,12 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
+    id 'signing'
+    id 'com.vanniktech.maven.publish.base' version '0.37.0'
 }
 
-group = 'com.autoauth'
-version = '1.0.3-SNAPSHOT'
+group = providers.gradleProperty('publicationGroup').getOrElse('com.autoauth')
+version = providers.gradleProperty('releaseVersion').getOrElse('1.0.3-SNAPSHOT')
 
 java {
     toolchain {
@@ -64,8 +66,8 @@ tasks.named('check') {
 dependencies {
     // Keep JJWT/springdoc's Jackson 2 family aligned on the patched maintenance release.
     // Import first so generated Maven metadata gives this BOM precedence over Boot's.
-    implementation platform('com.fasterxml.jackson:jackson-bom:2.22.3')
-    implementation platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
+    api platform('com.fasterxml.jackson:jackson-bom:2.22.3')
+    api platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
     annotationProcessor platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
 
     implementation 'org.springframework.boot:spring-boot-autoconfigure'
@@ -76,6 +78,11 @@ dependencies {
     implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.5'
+    // Maven does not propagate a dependency's imported BOM to the consuming project.
+    // Declare the adapter's JSON runtime directly so its older transitive versions cannot win.
+    runtimeOnly 'com.fasterxml.jackson.core:jackson-core'
+    runtimeOnly 'com.fasterxml.jackson.core:jackson-databind'
+    runtimeOnly 'com.fasterxml.jackson.core:jackson-annotations'
 
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     compileOnly 'org.springframework.boot:spring-boot-configuration-processor'
@@ -88,7 +95,8 @@ dependencies {
 
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
+    // OpenAPI/customizer types are part of the supported consumer customization API.
+    api 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
 }
 
 tasks.named('test') {
@@ -104,6 +112,136 @@ publishing {
     publications {
         mavenJava(MavenPublication) {
             from components.java
+            versionMapping {
+                usage('java-api') { fromResolutionOf('runtimeClasspath') }
+                usage('java-runtime') { fromResolutionResult() }
+            }
+            pom {
+                name = 'AutoAuth'
+                description = 'Access and refresh JWT authentication, HttpOnly cookies, CSRF protection, and role authorization for Spring Boot.'
+                url = 'https://github.com/AutoSprings/AutoAuth'
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://opensource.org/license/mit'
+                        distribution = 'repo'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'JTSmullen'
+                        name = 'Smullen'
+                        url = 'https://github.com/JTSmullen'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:https://github.com/AutoSprings/AutoAuth.git'
+                    developerConnection = 'scm:git:ssh://git@github.com/AutoSprings/AutoAuth.git'
+                    url = 'https://github.com/AutoSprings/AutoAuth'
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = 'Staging'
+            url = layout.buildDirectory.dir('staging-repository')
+        }
+    }
+}
+
+tasks.withType(Jar).configureEach {
+    from('LICENSE') { into 'META-INF' }
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
+// Keep compatibility with existing credentials in the user's ~/.gradle/gradle.properties.
+// CI may override signing inputs through environment variables without writing key files.
+def releaseSigningKey = providers.environmentVariable('SIGNING_KEY').filter { !it.isBlank() }
+        .orElse(providers.gradleProperty('signingInMemoryKey').filter { !it.isBlank() })
+def releaseSigningPassword = providers.environmentVariable('SIGNING_PASSWORD')
+        .orElse(providers.gradleProperty('signingInMemoryKeyPassword'))
+def publicationVersion = project.version.toString()
+def publicationGroup = project.group.toString()
+def centralTaskNames = ['publishToMavenCentral', 'publishAndReleaseToMavenCentral']
+signing {
+    // Local consumer verification works unsigned; Central bundles always require signing.
+    required = { gradle.taskGraph.allTasks.any {
+        it.name == 'centralBundle' || it.name in centralTaskNames || it.name.endsWith('ToMavenCentralRepository')
+    } }
+    if (releaseSigningKey.isPresent()) {
+        useInMemoryPgpKeys(releaseSigningKey.get(), releaseSigningPassword.getOrElse(''))
+    }
+    sign publishing.publications.mavenJava
+}
+
+def validateRelease = tasks.register('validateRelease') {
+    group = 'publishing'
+    description = 'Check release coordinates and signing inputs before producing a Central bundle.'
+    doLast {
+        if (!(publicationVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?/)
+                || publicationVersion.toUpperCase().contains('SNAPSHOT')) {
+            throw new GradleException('Supply a non-SNAPSHOT release version, e.g. -PreleaseVersion=2.0.0')
+        }
+        if (!(publicationGroup ==~ /[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_-]*)+/)) {
+            throw new GradleException('Supply a valid verified Central namespace with -PpublicationGroup=...')
+        }
+        if (!releaseSigningKey.isPresent()) {
+            throw new GradleException('Set SIGNING_KEY or signingInMemoryKey to your ASCII-armored PGP private key; see docs/publishing.md')
+        }
+    }
+}
+
+// The base plugin uses the existing mavenJava publication and Portal credentials;
+// it does not create another publication or replace our POM/signing configuration.
+mavenPublishing {
+    publishToMavenCentral()
+}
+
+def centralUsername = providers.gradleProperty('mavenCentralUsername')
+def centralPassword = providers.gradleProperty('mavenCentralPassword')
+def validateCentralCredentials = tasks.register('validateCentralCredentials') {
+    group = 'publishing'
+    description = 'Check that Portal token properties exist without printing their values.'
+    doLast {
+        if (!centralUsername.isPresent() || centralUsername.get().isBlank()
+                || !centralPassword.isPresent() || centralPassword.get().isBlank()) {
+            throw new GradleException('Set mavenCentralUsername and mavenCentralPassword in your user Gradle properties')
+        }
+    }
+}
+tasks.matching { it.name in centralTaskNames || it.name.endsWith('ToMavenCentralRepository') }.configureEach {
+    dependsOn validateRelease, validateCentralCredentials, tasks.named('check')
+}
+
+tasks.named('signMavenJavaPublication') {
+    mustRunAfter validateRelease
+}
+
+tasks.register('centralBundle', Zip) {
+    group = 'publishing'
+    description = 'Build a signed, checksummed ZIP for manual validation and publication in the Central Portal.'
+    dependsOn validateRelease, tasks.named('check'), tasks.named('publishMavenJavaPublicationToStagingRepository')
+    destinationDirectory = layout.buildDirectory.dir('central')
+    archiveFileName = "autoauth-${publicationVersion}-central.zip"
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    def coordinatePath = "${publicationGroup.replace('.', '/')}/autoauth/${publicationVersion}"
+    def publicationDirectory = layout.buildDirectory.dir("staging-repository/${coordinatePath}")
+    from(layout.buildDirectory.dir('staging-repository')) {
+        include "${coordinatePath}/autoauth-${publicationVersion}*"
+        exclude '**/maven-metadata*', '**/*.asc.*'
+    }
+    doFirst {
+        def directory = publicationDirectory.get().asFile
+        for (String extension : ['.pom', '.jar', '-sources.jar', '-javadoc.jar', '.module']) {
+            String artifact = "autoauth-${publicationVersion}${extension}"
+            for (String suffix : ['', '.asc', '.md5', '.sha1']) {
+                if (!new File(directory, artifact + suffix).isFile()) {
+                    throw new GradleException("Missing Central artifact: ${artifact}${suffix}")
+                }
+            }
         }
     }
 }

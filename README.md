@@ -29,6 +29,8 @@ and springdoc-openapi 3.1.1**. Spring Boot 3 is not the supported target for thi
 
 The current source version is `com.autoauth:autoauth:1.0.3-SNAPSHOT`.
 These changes do not publish it to Maven Central.
+Release maintainers: follow [Maven Central publishing](docs/publishing.md) to
+verify consumers, sign a release bundle, and publish it through the Central Portal.
 
 ```powershell
 .\gradlew.bat clean build
@@ -194,6 +196,9 @@ await fetch("/api/login", {
 ```
 
 Include the CSRF header and cookies on POST/PUT/PATCH/DELETE requests.
+After authentication changes, bootstrap again or read the current `XSRF-TOKEN`
+cookie before sending the next unsafe request; do not cache an old CSRF token
+across login/logout. Swagger UI reads the current cookie automatically.
 `XSRF-TOKEN` is a separate readable CSRF cookie; JWT cookies remain HttpOnly.
 Cookies are host-only. GET endpoints must not change state. For a separate frontend
 origin, use the API base URL in both requests and approve that origin explicitly.
@@ -287,8 +292,10 @@ them automatically; Swagger cannot directly write an HttpOnly cookie. Safe page
 requests bootstrap the CSRF cookie automatically.
 
 Public annotated operations have no authentication requirement. Role metadata uses
-`x-autoauth-roles` and `x-autoauth-require-all`. A custom `OpenAPI` bean owns its
-top-level security schemes. With `autoauth.swagger-public=true`, registered springdoc
+`x-autoauth-roles` and `x-autoauth-require-all`, including grouped documents.
+AutoAuth adds missing security schemes and default requirements to custom `OpenAPI`
+beans while preserving explicit schemes and security lists (including an empty list).
+With `autoauth.swagger-public=true`, registered springdoc
 GET handlers and dedicated Swagger UI resources are public, including configured
 `springdoc.api-docs.path`, grouped specifications, and `springdoc.swagger-ui.path`.
 Application handlers sharing a documentation prefix remain protected. Disabling
@@ -309,6 +316,10 @@ access tokens that satisfy every check other than expiration.
 
 See [scope/API migration](docs/migration-simple-jwt.md) and
 [rate limiting migration](docs/migration-autolimit.md).
+
+Run the [cookie consumer example](examples/cookie-consumer/README.md) to explore
+login, refresh, role checks, logout, and Swagger using the actual published artifact
+through either Gradle or Maven.
 
 ## License
 

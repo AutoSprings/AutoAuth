@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.autoauth.examples</groupId>
+    <artifactId>cookie-consumer</artifactId>
+    <version>1.0.0</version>
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <autoauth.group>com.autoauth</autoauth.group>
+        <autoauth.version>1.0.3-SNAPSHOT</autoauth.version>
+    </properties>
+    <!-- No application BOM: this exercises the published library's dependency management. -->
+    <dependencies>
+        <dependency>
+            <groupId>${autoauth.group}</groupId>
+            <artifactId>autoauth</artifactId>
+            <version>${autoauth.version}</version>
+        </dependency>
+    </dependencies>
+    <profiles>
+        <profile>
+            <id>staged-publication</id>
+            <activation><property><name>autoauth.repository</name></property></activation>
+            <repositories><repository><id>staged-autoauth</id><url>${autoauth.repository}</url></repository></repositories>
+        </profile>
+    </profiles>
+    <build><plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.1</version>
+        </plugin>
+        <plugin>
+            <groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId><version>4.1.2</version>
+            <executions><execution><goals><goal>repackage</goal></goals></execution></executions>
+            <configuration><mainClass>demo.DemoApplication</mainClass></configuration>
+        </plugin>
+    </plugins></build>
+</project>

@@ -39,6 +39,18 @@ class CustomSwaggerPathsTest {
                 .andExpect(status().isOk()).andExpect(content().string(containsString("X-XSRF-TOKEN")));
     }
 
+    @Test void customApiInfoKeepsAutomaticSecurityAndGroupedOperationMetadata() throws Exception {
+        for (String path : new String[]{"/docs/schema", "/docs/schema/demo"}) {
+            mvc.perform(get(path)).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.info.title").value("Consumer API"))
+                    .andExpect(jsonPath("$.components.securitySchemes.JWT-Bearer.scheme").value("bearer"))
+                    .andExpect(jsonPath("$.components.securitySchemes.JWT-Cookie.name").value("AUTOAUTH"))
+                    .andExpect(jsonPath("$.security[0].JWT-Bearer").isArray())
+                    .andExpect(jsonPath("$.paths['/demo/public'].get.security").isEmpty())
+                    .andExpect(jsonPath("$.paths['/demo/admin'].get['x-autoauth-roles'][0]").value("ADMIN"));
+        }
+    }
+
     @Test void docsExposureDoesNotPermitOldUrlsSiblingRoutesOrApplicationHandlersInsideDocsPrefixes() throws Exception {
         for (String path : new String[]{"/v3/api-docs", "/swagger-ui.html", "/docs/private",
                 "/docs/schema/private", "/docs/swagger-ui/private", "/docs/explore/private"}) {
@@ -53,6 +65,10 @@ class CustomSwaggerPathsTest {
     @Import({SwaggerConsumerTest.Routes.class, ApplicationRoutes.class})
     static class App {
         @Bean GroupedOpenApi demoApi() { return GroupedOpenApi.builder().group("demo").pathsToMatch("/demo/**").build(); }
+        @Bean io.swagger.v3.oas.models.OpenAPI consumerApi() {
+            return new io.swagger.v3.oas.models.OpenAPI().info(new io.swagger.v3.oas.models.info.Info()
+                    .title("Consumer API").version("1"));
+        }
     }
     @RestController public static class ApplicationRoutes {
         @GetMapping({"/v3/api-docs", "/swagger-ui.html", "/docs/private", "/docs/schema/private",
