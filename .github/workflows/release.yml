@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Unused non-SNAPSHOT release version, e.g. 1.0.0'
+        description: 'Must match the release configured in build.gradle (1.0.0)'
         default: '1.0.0'
         required: true
         type: string
       group:
-        description: 'Verified Central namespace'
+        description: 'Must match the configured namespace (io.github.autosprings)'
         default: 'io.github.autosprings'
         required: true
         type: string

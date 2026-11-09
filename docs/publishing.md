@@ -37,8 +37,9 @@ To upload, validate, and publish entirely from Gradle instead, use:
 .\gradlew.bat '-PpublicationGroup=io.github.autosprings' '-PreleaseVersion=1.0.0' publishAndReleaseToMavenCentral
 ```
 
-The second command publishes the release to Central. Replace both example
-coordinates with the intended verified group and unused version. Run the consumer
+The second command publishes the configured release to Central. Old command-line
+group/version overrides that differ from this release are rejected before any
+publishing task runs. Run the consumer
 verification in step 4 first and use the exact tested release commit.
 The existing local user-home override may also be supplied as described below.
 Plugin documentation: <https://vanniktech.github.io/gradle-maven-publish-plugin/central/>.
@@ -62,7 +63,9 @@ GitHub verification. This repository cannot verify account ownership for you.
 
 The configured release is `io.github.autosprings:autoauth:1.0.0`, with no SNAPSHOT
 suffix. These defaults apply without command-line overrides. For later releases,
-select another version with `-PreleaseVersion=...` and update the consumer examples.
+update `expectedPublicationVersion` in `build.gradle` and the consumer examples.
+Command-line overrides may confirm the configured coordinates, but cannot silently
+replace them with an old namespace or version.
 Confirm the chosen coordinates have not already been released: Central artifacts
 are immutable. Use the same group/version for verification, bundle, release notes,
 and the eventual Git tag.

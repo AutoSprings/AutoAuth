@@ -5,8 +5,13 @@ plugins {
     id 'com.vanniktech.maven.publish.base' version '0.37.0'
 }
 
-group = providers.gradleProperty('publicationGroup').getOrElse('io.github.autosprings')
-version = providers.gradleProperty('releaseVersion').getOrElse('1.0.0')
+def expectedPublicationGroup = 'io.github.autosprings'
+def expectedPublicationVersion = '1.0.0'
+group = providers.gradleProperty('publicationGroup').getOrElse(expectedPublicationGroup)
+version = providers.gradleProperty('releaseVersion').getOrElse(expectedPublicationVersion)
+if (group.toString() != expectedPublicationGroup || version.toString() != expectedPublicationVersion) {
+    throw new GradleException("Publication coordinates must match this release: ${expectedPublicationGroup}:autoauth:${expectedPublicationVersion}. Remove old -PpublicationGroup/-PreleaseVersion overrides.")
+}
 
 java {
     toolchain {
