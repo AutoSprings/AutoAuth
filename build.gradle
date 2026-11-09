@@ -75,9 +75,9 @@ dependencies {
     api 'org.springframework.boot:spring-boot-starter-security'
     api 'org.springframework.boot:spring-boot-starter-webmvc'
 
-    implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.5'
+    implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.13.0'
     // Maven does not propagate a dependency's imported BOM to the consuming project.
     // Declare the adapter's JSON runtime directly so its older transitive versions cannot win.
     runtimeOnly 'com.fasterxml.jackson.core:jackson-core'
