@@ -4,6 +4,7 @@ import com.autoauth.exception.*;
 import com.autoauth.filter.JwtAuthenticationFilter;
 import com.autoauth.jwt.JwtValidator;
 import com.autoauth.util.EndpointScanner;
+import com.autoauth.util.SwaggerEndpointMatcher;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.*;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -36,9 +37,7 @@ public class SecurityFilterChainConfig {
         List<RequestMatcher> publicMatchers = new ArrayList<>();
         publicMatchers.add(paths.matcher(HttpMethod.GET, "/autoauth/csrf"));
         if (properties.isSwaggerPublic()) {
-            for (String path : List.of("/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")) {
-                publicMatchers.add(paths.matcher(HttpMethod.GET, path));
-            }
+            publicMatchers.add(new SwaggerEndpointMatcher(context));
         }
         properties.getPublicPaths().forEach(path -> publicMatchers.add(paths.matcher(path)));
         publicMatchers.add(new EndpointScanner(context));
