@@ -222,6 +222,17 @@ cookie recovery described above as the sole exception.
 
 `autoauth.public-paths` is an explicit path-pattern escape hatch applying to all
 methods at matching paths. Prefer annotations for method-specific access.
+Patterns are relative to the application context: with `server.servlet.context-path=/app`,
+configure `/status`, not `/app/status`. A public GET also permits MVC's implicit HEAD;
+it does not automatically permit OPTIONS or other HTTP methods.
+
+Forwards and error/async redispatches are authorized against their target handler.
+Making the entry handler public does not make its target public. JWT authentication
+is rebuilt on async/error dispatches, and role checks still apply at the target.
+Error routes are protected unless explicitly made public; an anonymous error can
+therefore produce 401 instead of exposing the error handler's response.
+See [endpoint security and custom chains](docs/endpoint-security.md) for ownership
+and servlet filter registration requirements.
 
 Roles are case-sensitive and normalize one optional `ROLE_` prefix. `ADMIN`
 and `ROLE_ADMIN` are equivalent; `admin` is different. No hierarchy is implied.
@@ -277,7 +288,11 @@ requests bootstrap the CSRF cookie automatically.
 
 Public annotated operations have no authentication requirement. Role metadata uses
 `x-autoauth-roles` and `x-autoauth-require-all`. A custom `OpenAPI` bean owns its
-top-level security schemes. Custom springdoc paths need explicit route permissions.
+top-level security schemes. With `autoauth.swagger-public=true`, registered springdoc
+GET handlers and dedicated Swagger UI resources are public, including configured
+`springdoc.api-docs.path`, grouped specifications, and `springdoc.swagger-ui.path`.
+Application handlers sharing a documentation prefix remain protected. Disabling
+public Swagger exposure keeps documentation protected at its configured paths.
 
 ## Customization and migration
 

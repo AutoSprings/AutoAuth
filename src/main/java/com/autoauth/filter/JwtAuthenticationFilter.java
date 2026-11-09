@@ -22,6 +22,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final AutoAuthProperties properties;
     private final RequestMatcher publicRequests;
 
+    // Stateless authentication must be rebuilt on the container's continuation thread.
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() { return false; }
+
+    @Override
+    protected boolean shouldNotFilterErrorDispatch() { return false; }
+
     public JwtAuthenticationFilter(JwtValidator validator, AutoAuthProperties properties) {
         this(validator, properties, request -> false);
     }

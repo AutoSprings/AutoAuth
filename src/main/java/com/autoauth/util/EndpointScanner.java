@@ -17,7 +17,8 @@ public class EndpointScanner implements RequestMatcher {
     @Override
     public boolean matches(HttpServletRequest request) {
         try {
-            if (!ServletRequestPathUtils.hasParsedRequestPath(request)) ServletRequestPathUtils.parseAndCache(request);
+            // FORWARD/ERROR/ASYNC may reuse a request with the original handler's cached path.
+            ServletRequestPathUtils.parseAndCache(request);
             var mappings = context.getBean("requestMappingHandlerMapping", RequestMappingHandlerMapping.class);
             var chain = mappings.getHandler(request);
             return chain != null && chain.getHandler() instanceof HandlerMethod handler && isPublic(handler);

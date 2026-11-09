@@ -5,6 +5,8 @@ import com.autoauth.jwt.*;
 import com.autoauth.model.*;
 import com.autoauth.support.TestKeys;
 import com.autoauth.util.AuthContext;
+import com.autoauth.util.EndpointScanner;
+import com.autoauth.filter.JwtAuthenticationFilter;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.security.SecurityScheme;
@@ -17,6 +19,10 @@ import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.context.annotation.*;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.core.annotation.Order;
+import org.springframework.mock.web.MockHttpServletRequest;
+import jakarta.servlet.DispatcherType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.*;
@@ -77,8 +83,46 @@ class AutoAuthConfigurationTest {
             mvc.perform(get("/health")).andExpect(status().isOk());
             mvc.perform(get("/api/private")).andExpect(status().isUnauthorized());
             mvc.perform(get("/api/configured")).andExpect(status().isOk());
+            mvc.perform(post("/api/configured")).andExpect(status().isOk());
             mvc.perform(get("/api/choice").param("public", "true")).andExpect(status().isOk());
             mvc.perform(get("/api/choice")).andExpect(status().isUnauthorized());
+        });
+    }
+
+    @Test
+    void redispatchMatchingReplacesTheOriginalHandlersCachedPath() {
+        withKeys().run(context -> {
+            var scanner = new EndpointScanner(context);
+            for (DispatcherType dispatch : List.of(DispatcherType.FORWARD, DispatcherType.ERROR, DispatcherType.ASYNC)) {
+                var request = new MockHttpServletRequest("GET", "/app/api/public");
+                request.setContextPath("/app");
+                assertThat(scanner.matches(request)).isTrue();
+                request.setDispatcherType(dispatch);
+                request.setRequestURI("/app/api/private");
+                assertThat(scanner.matches(request)).as("%s must match the target", dispatch).isFalse();
+                request.setRequestURI("/app/api/public");
+                assertThat(scanner.matches(request)).isTrue();
+            }
+        });
+    }
+
+    @Test
+    void multipleApplicationChainsReplaceTheDefaultAndOwnAllRoutePermissions() {
+        withKeys().withPropertyValues("autoauth.transport=BEARER").withUserConfiguration(MultipleChains.class).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBeansOfType(SecurityFilterChain.class)).hasSize(2).doesNotContainKey("securityFilterChain");
+            var mvc = mvc(context);
+            String user = context.getBean(JwtGenerator.class).generateAccessToken(new AutoAuthUser("alice", List.of("USER"), null));
+            String admin = context.getBean(JwtGenerator.class).generateAccessToken(new AutoAuthUser("alice", List.of("ADMIN"), null));
+            mvc.perform(get("/health")).andExpect(status().isOk());
+            // The application chose not to honor @PublicEndpoint in its custom chain.
+            mvc.perform(get("/api/public")).andExpect(status().isUnauthorized());
+            mvc.perform(get("/api/private").header("Authorization", "Bearer " + user)).andExpect(status().isOk());
+            mvc.perform(get("/api/admin").header("Authorization", "Bearer " + user)).andExpect(status().isForbidden());
+            mvc.perform(get("/api/admin").header("Authorization", "Bearer " + admin)).andExpect(status().isOk());
+            mvc.perform(get("/ops/status").header("Authorization", "Bearer " + admin)).andExpect(status().isForbidden());
+            mvc.perform(get("/health").header("Authorization", "Bearer invalid")).andExpect(status().isUnauthorized());
+            mvc.perform(get("/unknown")).andExpect(status().isUnauthorized());
         });
     }
 
@@ -204,8 +248,9 @@ class AutoAuthConfigurationTest {
         withKeys().run(context ->
                 mvc(context).perform(get("/v3/api-docs")).andExpect(status().isUnauthorized()));
         withKeys().withPropertyValues("autoauth.swagger-public=true").run(context -> {
-            mvc(context).perform(get("/v3/api-docs")).andExpect(status().isNotFound());
-            mvc(context).perform(get("/swagger-ui/index.html")).andExpect(status().isNotFound());
+            // With no springdoc handlers registered these paths do not become public.
+            mvc(context).perform(get("/v3/api-docs")).andExpect(status().isUnauthorized());
+            mvc(context).perform(get("/swagger-ui/index.html")).andExpect(status().isUnauthorized());
         });
     }
 
@@ -243,12 +288,32 @@ class AutoAuthConfigurationTest {
                     .build();
         }
     }
+    @Configuration(proxyBeanMethods = false)
+    static class MultipleChains {
+        @Bean @Order(1) SecurityFilterChain operations(HttpSecurity http) throws Exception {
+            return http.securityMatcher("/ops/**").csrf(csrf -> csrf.disable())
+                    .authorizeHttpRequests(auth -> auth.anyRequest().denyAll())
+                    .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, failure) -> response.setStatus(403)))
+                    .build();
+        }
+        @Bean @Order(2) SecurityFilterChain application(HttpSecurity http, JwtValidator validator,
+                                                     AutoAuthProperties properties) throws Exception {
+            return http.csrf(csrf -> csrf.disable())
+                    .sessionManagement(session -> session.sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.STATELESS))
+                    .authorizeHttpRequests(auth -> auth.requestMatchers("/health").permitAll().anyRequest().authenticated())
+                    .exceptionHandling(ex -> ex.authenticationEntryPoint(new com.autoauth.exception.AutoAuthAuthenticationEntryPoint())
+                            .accessDeniedHandler(new com.autoauth.exception.AutoAuthAccessDeniedHandler()))
+                    .addFilterBefore(new JwtAuthenticationFilter(validator, properties), UsernamePasswordAuthenticationFilter.class)
+                    .build();
+        }
+    }
     @RestController @RequestMapping("/api")
     public static class Routes {
         @PublicEndpoint @GetMapping("/public") public String open() { return "public"; }
         @PostMapping("/public") public String protectedPost() { return "protected"; }
         @PublicEndpoint @PostMapping("/login") public String login() { return "application login stub"; }
         @GetMapping("/configured") public String configured() { return "configured"; }
+        @PostMapping("/configured") public String configuredPost() { return "configured post"; }
         @GetMapping("/private") public String secured() { return AuthContext.getCurrentUserId().orElseThrow(); }
         @PostMapping("/private") public String post() { return "posted"; }
         @RequiresRole("ADMIN") @GetMapping("/admin") public String admin() { return "admin"; }
