@@ -5,8 +5,8 @@ plugins {
     id 'com.vanniktech.maven.publish.base' version '0.37.0'
 }
 
-group = providers.gradleProperty('publicationGroup').getOrElse('com.autoauth')
-version = providers.gradleProperty('releaseVersion').getOrElse('1.0.3-SNAPSHOT')
+group = providers.gradleProperty('publicationGroup').getOrElse('io.github.autosprings')
+version = providers.gradleProperty('releaseVersion').getOrElse('1.0.0')
 
 java {
     toolchain {
@@ -182,7 +182,7 @@ def validateRelease = tasks.register('validateRelease') {
     doLast {
         if (!(publicationVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?/)
                 || publicationVersion.toUpperCase().contains('SNAPSHOT')) {
-            throw new GradleException('Supply a non-SNAPSHOT release version, e.g. -PreleaseVersion=2.0.0')
+            throw new GradleException('Supply a non-SNAPSHOT release version, e.g. -PreleaseVersion=1.0.0')
         }
         if (!(publicationGroup ==~ /[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_-]*)+/)) {
             throw new GradleException('Supply a valid verified Central namespace with -PpublicationGroup=...')

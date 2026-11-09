@@ -7,6 +7,6 @@ repositories {
     mavenCentral()
 }
 dependencies {
-    implementation "${providers.gradleProperty('autoauthGroup').getOrElse('com.autoauth')}:autoauth:${providers.gradleProperty('autoauthVersion').getOrElse('1.0.3-SNAPSHOT')}"
+    implementation "${providers.gradleProperty('autoauthGroup').getOrElse('io.github.autosprings')}:autoauth:${providers.gradleProperty('autoauthVersion').getOrElse('1.0.0')}"
 }
 application { mainClass = 'demo.DemoApplication' }
