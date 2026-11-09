@@ -182,10 +182,23 @@ class AutoAuthConfigurationTest {
     }
 
     @Test
+    void cookieBudgetBindsWithoutRestrictingLargerBearerTokens() {
+        withKeys().withPropertyValues("autoauth.transport=BEARER", "autoauth.max-cookie-size=512").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(AutoAuthProperties.class).getMaxCookieSize()).isEqualTo(512);
+            String token = context.getBean(JwtGenerator.class).generateAccessToken(
+                    new AutoAuthUser("alice", List.of("USER"), java.util.Map.of("large", "a".repeat(3000))));
+            assertThat(token.length()).isGreaterThan(3800);
+            mvc(context).perform(get("/api/private").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk()).andExpect(content().string("alice"));
+        });
+    }
+
+    @Test
     void rejectsInvalidConfigurationAndPreservesExplicitDocumentationExposure() {
         for (String invalid : List.of("autoauth.issuer=", "autoauth.expiration-minutes=0",
                 "autoauth.cookie-same-site=invalid", "autoauth.allowed-origins[0]=*",
-                "autoauth.refresh-cookie-name=AUTOAUTH")) {
+                "autoauth.refresh-cookie-name=AUTOAUTH", "autoauth.max-cookie-size=0", "autoauth.max-cookie-size=-1")) {
             withKeys().withPropertyValues(invalid).run(context -> assertThat(context.getStartupFailure()).isNotNull());
         }
         withKeys().run(context ->

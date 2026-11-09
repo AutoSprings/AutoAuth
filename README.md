@@ -62,6 +62,7 @@ autoauth:
   refresh-cookie-name: AUTOAUTH_REFRESH
   cookie-secure: true
   cookie-same-site: Lax
+  max-cookie-size: 3800
   # Explicitly expose Swagger/OpenAPI routes for exploration.
   swagger-public: true
   # Only needed for an approved frontend on another origin.
@@ -103,6 +104,25 @@ jwtCookies.write(response, tokens);
 Inject `JwtGenerator` and `JwtCookies` into your login controller. The helper writes
 distinct access/refresh cookies with HttpOnly, Secure, SameSite, path, and lifetime
 attributes. Do not also return JWTs in JSON if they should be inaccessible to JavaScript.
+
+`autoauth.max-cookie-size` defaults to **3800 bytes per cookie** and must be positive.
+It counts the UTF-8 bytes of the entire serialized `Set-Cookie` value: name, token,
+separators, and all attributes (including expiry). The header name itself is excluded.
+This conservative budget leaves room below the 4096-byte cookie capacity recommended
+by [RFC 6265](https://www.rfc-editor.org/rfc/rfc6265#section-6.1). Raising it requires
+checking the limits of your browsers and infrastructure; it does not guarantee storage.
+Keep custom claims small. Cookie names and attributes consume part of the budget.
+
+`JwtCookies.write` builds and validates both cookies before adding either header or
+changing `Cache-Control`. Oversized or invalid cookie values throw `IllegalArgumentException`
+without exposing token contents or partially writing the pair. The `access` and `refresh`
+builders enforce the same limit; `clear` also validates both deletion cookies first.
+Token values must be nonempty and use JWT characters (`A-Z`, `a-z`, `0-9`, `.`, `_`, `-`);
+this helper does not verify signatures or token purposes. Clearing uses empty values.
+
+The cookie budget is independent of `autoauth.max-token-length` (default **16384
+characters**), which bounds JWT generation and validation. Larger bearer tokens remain
+supported within that token limit; the cookie budget applies only to cookie creation.
 
 For bearer clients, return token strings through your application's chosen response.
 `generateAccessToken` and `generateRefreshToken` are available individually.
