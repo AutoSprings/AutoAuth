@@ -81,11 +81,34 @@ class JwtTokenTest {
 
     @Test
     void expirationAllowsOnlyConfiguredThirtySecondSkew() {
-        assertThat(validator.validateAccessToken(sign(builder().expiration(Date.from(clock.instant().minusSeconds(20))))))
-                .isNotNull();
-        assertThatThrownBy(() -> validator.validateAccessToken(
-                sign(builder().expiration(Date.from(clock.instant().minusSeconds(31))))))
-                .isInstanceOf(JwtValidationException.class);
+        for (String type : List.of("access", "refresh")) {
+            for (int secondsAgo : List.of(0, 29, 30)) {
+                String token = sign(builder().claim("type", type)
+                        .expiration(Date.from(clock.instant().minusSeconds(secondsAgo))));
+                assertThat(validatePurpose(token, type)).isNotNull();
+            }
+            String expired = sign(builder().claim("type", type)
+                    .expiration(Date.from(clock.instant().minusSeconds(31))));
+            assertThatThrownBy(() -> validatePurpose(expired, type)).isInstanceOf(JwtValidationException.class);
+        }
+    }
+
+    @Test
+    void notBeforeAllowsOnlyConfiguredThirtySecondSkew() {
+        for (String type : List.of("access", "refresh")) {
+            for (int secondsAhead : List.of(0, 29, 30)) {
+                String token = sign(builder().claim("type", type)
+                        .notBefore(Date.from(clock.instant().plusSeconds(secondsAhead))));
+                assertThat(validatePurpose(token, type)).isNotNull();
+            }
+            String premature = sign(builder().claim("type", type)
+                    .notBefore(Date.from(clock.instant().plusSeconds(31))));
+            assertThatThrownBy(() -> validatePurpose(premature, type)).isInstanceOf(JwtValidationException.class);
+        }
+    }
+
+    private AutoAuthUser validatePurpose(String token, String type) {
+        return "access".equals(type) ? validator.validateAccessToken(token) : validator.validateRefreshToken(token);
     }
 
     private JwtBuilder builder() {

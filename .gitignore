@@ -3,6 +3,7 @@
 # =========================================================================
 .gradle/
 /build/
+/.split-work/
 
 # Do NOT ignore the Gradle Wrapper files so others can run ./gradlew
 !gradle-wrapper.jar
