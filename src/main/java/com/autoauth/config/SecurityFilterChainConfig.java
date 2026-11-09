@@ -14,9 +14,13 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.cors.*;
 import java.util.List;
+import java.util.ArrayList;
 
 @Configuration(proxyBeanMethods = false)
 @EnableWebSecurity
@@ -28,6 +32,18 @@ public class SecurityFilterChainConfig {
         properties.validate();
         var entryPoint = new AutoAuthAuthenticationEntryPoint();
         var deniedHandler = new AutoAuthAccessDeniedHandler();
+        var paths = PathPatternRequestMatcher.withDefaults();
+        List<RequestMatcher> publicMatchers = new ArrayList<>();
+        publicMatchers.add(paths.matcher(HttpMethod.GET, "/autoauth/csrf"));
+        if (properties.isSwaggerPublic()) {
+            for (String path : List.of("/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")) {
+                publicMatchers.add(paths.matcher(HttpMethod.GET, path));
+            }
+        }
+        properties.getPublicPaths().forEach(path -> publicMatchers.add(paths.matcher(path)));
+        publicMatchers.add(new EndpointScanner(context));
+        // Authorization and stale-cookie recovery must agree on exactly which requests are public.
+        var publicRequests = new OrRequestMatcher(publicMatchers);
         if (properties.isCookieEnabled()) {
             var repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
             repository.setCookieCustomizer(cookie -> cookie.secure(properties.isCookieSecure())
@@ -44,19 +60,8 @@ public class SecurityFilterChainConfig {
                 .logout(logout -> logout.disable())
                 .requestCache(cache -> cache.disable())
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint).accessDeniedHandler(deniedHandler))
-                .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers(HttpMethod.GET, "/autoauth/csrf").permitAll();
-                    if (properties.isSwaggerPublic()) {
-                        auth.requestMatchers(HttpMethod.GET, "/v3/api-docs", "/v3/api-docs/**",
-                                "/swagger-ui/**", "/swagger-ui.html").permitAll();
-                    }
-                    if (!properties.getPublicPaths().isEmpty()) {
-                        auth.requestMatchers(properties.getPublicPaths().toArray(String[]::new)).permitAll();
-                    }
-                    auth.requestMatchers(new EndpointScanner(context)).permitAll();
-                    auth.anyRequest().authenticated();
-                })
-                .addFilterBefore(new JwtAuthenticationFilter(validator, properties), UsernamePasswordAuthenticationFilter.class);
+                .authorizeHttpRequests(auth -> auth.requestMatchers(publicRequests).permitAll().anyRequest().authenticated())
+                .addFilterBefore(new JwtAuthenticationFilter(validator, properties, publicRequests), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 

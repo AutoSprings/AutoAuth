@@ -62,6 +62,7 @@ jobs:
           $required = @(
             'com.autoauth.jwt.JwtTokenTest',
             'com.autoauth.config.AutoAuthConfigurationTest',
+            'com.autoauth.config.CookieRecoveryTest',
             'com.autoauth.config.JsonCompatibilityTest',
             'com.autoauth.config.SwaggerConsumerTest'
           )

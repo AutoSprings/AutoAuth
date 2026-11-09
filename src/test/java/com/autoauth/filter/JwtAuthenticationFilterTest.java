@@ -2,6 +2,7 @@ package com.autoauth.filter;
 
 import com.autoauth.config.AutoAuthProperties;
 import com.autoauth.exception.JwtValidationException;
+import com.autoauth.exception.ExpiredAccessTokenException;
 import com.autoauth.jwt.JwtValidator;
 import com.autoauth.model.AutoAuthUser;
 import jakarta.servlet.FilterChain;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.*;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -62,6 +64,37 @@ class JwtAuthenticationFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         verifyNoInteractions(chain);
     }
+    @Test
+    void publicExpiredCookieRecoveryContinuesAnonymouslyAndClearsPriorAuthentication() throws Exception {
+        request.setCookies(new Cookie(properties.getCookieName(), "expired"));
+        when(validator.validateAccessToken("expired")).thenThrow(new ExpiredAccessTokenException(null));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user, null, List.of()));
+        new JwtAuthenticationFilter(validator, properties, candidate -> true).doFilter(request, response, chain);
+        verify(chain).doFilter(request, response);
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void existingConstructorKeepsStrictExpiredCookieRejectionWithoutAnExplicitPublicMatcher() throws Exception {
+        request.setCookies(new Cookie(properties.getCookieName(), "expired"));
+        when(validator.validateAccessToken("expired")).thenThrow(new ExpiredAccessTokenException(null));
+        filter();
+        assertThat(response.getStatus()).isEqualTo(401);
+        verifyNoInteractions(chain);
+    }
+
+    @Test
+    void expiredBearerOnPublicRouteNeverFallsBackToCookie() throws Exception {
+        request.addHeader("Authorization", "Bearer expired");
+        request.setCookies(new Cookie(properties.getCookieName(), "valid"));
+        when(validator.validateAccessToken("expired")).thenThrow(new ExpiredAccessTokenException(null));
+        new JwtAuthenticationFilter(validator, properties, candidate -> true).doFilter(request, response, chain);
+        assertThat(response.getStatus()).isEqualTo(401);
+        verify(validator).validateAccessToken("expired");
+        verifyNoMoreInteractions(validator);
+        verifyNoInteractions(chain);
+    }
+
     @Test
     void duplicateCookiesAreRejected() throws Exception {
         request.setCookies(new Cookie(properties.getCookieName(), "one"), new Cookie(properties.getCookieName(), "two"));
