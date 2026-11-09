@@ -27,7 +27,7 @@ Clearing cookies removes the browser copies; it does not invalidate copied token
 The baseline is **Java 21, Spring Boot 4.1.2 / Spring Framework 7, Spring Security 7,
 and springdoc-openapi 3.1.1**. Spring Boot 3 is not the supported target for this source tree.
 
-The current source version is `com.autoauth:autoauth:1.0.3-SNAPSHOT`.
+The configured release coordinates are `io.github.autosprings:autoauth:1.0.0`.
 These changes do not publish it to Maven Central.
 Release maintainers: follow [Maven Central publishing](docs/publishing.md) to
 verify consumers, sign a release bundle, and publish it through the Central Portal.
@@ -40,7 +40,7 @@ verify consumers, sign a release bundle, and publish it through the Central Port
 After building locally, add `mavenLocal()` to the consuming project's repositories:
 
 ```groovy
-implementation 'com.autoauth:autoauth:1.0.3-SNAPSHOT'
+implementation 'io.github.autosprings:autoauth:1.0.0'
 ```
 
 AutoAuth's own build resolves dependencies from Maven Central. Tests use ephemeral

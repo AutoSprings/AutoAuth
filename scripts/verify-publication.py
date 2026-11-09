@@ -167,8 +167,8 @@ def smoke(command, label):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--group", default="com.autoauth")
-    parser.add_argument("--version", default="1.0.3-SNAPSHOT")
+    parser.add_argument("--group", default="io.github.autosprings")
+    parser.add_argument("--version", default="1.0.0")
     parser.add_argument("--gradle-user-home")
     args = parser.parse_args()
     gradle = [ROOT / "gradlew.bat"] if os.name == "nt" else ["bash", ROOT / "gradlew"]

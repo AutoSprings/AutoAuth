@@ -27,14 +27,14 @@ After choosing an unused release version and confirming namespace ownership,
 upload from this computer with:
 
 ```powershell
-.\gradlew.bat '-PpublicationGroup=com.autoauth' '-PreleaseVersion=2.0.0' publishToMavenCentral
+.\gradlew.bat '-PpublicationGroup=io.github.autosprings' '-PreleaseVersion=1.0.0' publishToMavenCentral
 ```
 
 This runs checks, signs, and uploads; finish by choosing **Publish** in the Portal.
 To upload, validate, and publish entirely from Gradle instead, use:
 
 ```powershell
-.\gradlew.bat '-PpublicationGroup=com.autoauth' '-PreleaseVersion=2.0.0' publishAndReleaseToMavenCentral
+.\gradlew.bat '-PpublicationGroup=io.github.autosprings' '-PreleaseVersion=1.0.0' publishAndReleaseToMavenCentral
 ```
 
 The second command publishes the release to Central. Replace both example
@@ -49,7 +49,7 @@ ZIP workflow. Skip setup you already completed.
 ## 1. Choose and verify the namespace
 
 Sign in at <https://central.sonatype.com/> and open Namespaces.
-Keep `com.autoauth` only if that namespace is verified for your publishing account.
+Keep `io.github.autosprings` only if that namespace is verified for your publishing account.
 Otherwise verify a namespace you control (for example an eligible
 `io.github.<account>` namespace). Java packages need not change when the Maven
 group changes. Supply the chosen group with `-PpublicationGroup=...` on **every**
@@ -60,9 +60,9 @@ GitHub verification. This repository cannot verify account ownership for you.
 
 ## 2. Select an unused version
 
-The development default is `1.0.3-SNAPSHOT`. Bundles require an explicit release
-version, for example `-PreleaseVersion=2.0.0`. A new major release is appropriate
-if updating existing published consumers to the breaking Boot 4/API baseline.
+The configured release is `io.github.autosprings:autoauth:1.0.0`, with no SNAPSHOT
+suffix. These defaults apply without command-line overrides. For later releases,
+select another version with `-PreleaseVersion=...` and update the consumer examples.
 Confirm the chosen coordinates have not already been released: Central artifacts
 are immutable. Use the same group/version for verification, bundle, release notes,
 and the eventual Git tag.
@@ -93,7 +93,7 @@ Use Java 21 and Python 3.11+. From a clean release checkout:
 
 ```powershell
 .\gradlew.bat clean build
-python scripts/verify-publication.py --group com.autoauth --version 2.0.0
+python scripts/verify-publication.py --group io.github.autosprings --version 1.0.0
 ```
 
 Replace the example coordinates with your verified group and chosen version.
@@ -113,7 +113,7 @@ $signingPassphrase = Read-Host 'Signing key passphrase' -AsSecureString
 $signingCredential = [System.Net.NetworkCredential]::new('', $signingPassphrase)
 $env:SIGNING_PASSWORD = $signingCredential.Password
 try {
-    .\gradlew.bat '-PpublicationGroup=com.autoauth' '-PreleaseVersion=2.0.0' centralBundle
+    .\gradlew.bat '-PpublicationGroup=io.github.autosprings' '-PreleaseVersion=1.0.0' centralBundle
     if ($LASTEXITCODE -ne 0) { throw 'Release bundle failed' }
 } finally {
     Remove-Item Env:SIGNING_KEY, Env:SIGNING_PASSWORD -ErrorAction SilentlyContinue
@@ -124,7 +124,7 @@ try {
 GnuPG may ask for the passphrase when exporting; the build also needs it to sign.
 Use the same selected coordinates here. The task checks the version/signing inputs,
 runs checks/tests, stages signed JARs, POM, Gradle metadata, and checksums, then
-creates `build/central/autoauth-2.0.0-central.zip`.
+creates `build/central/autoauth-1.0.0-central.zip`.
 Sources, Javadoc, and the MIT license are included. Inspect the ZIP and verify a
 signature locally with `gpg --verify <file>.asc <file>` if you extract it.
 
@@ -148,10 +148,10 @@ or Maven's default Central repository, with no staging repository or `mavenLocal
 Run the cookie example against Central by omitting the staging repository option:
 
 ```powershell
-mvn -f examples/cookie-consumer/pom.xml '-Dautoauth.group=com.autoauth' '-Dautoauth.version=2.0.0' package
+mvn -f examples/cookie-consumer/pom.xml '-Dautoauth.group=io.github.autosprings' '-Dautoauth.version=1.0.0' package
 ```
 
-After successful publication, tag the exact tested commit (`v2.0.0` for the example)
+After successful publication, tag the exact tested commit (`v1.0.0` for the example)
 and publish release notes with coordinates, Java/Boot requirements, and migration
 links. Update the README installation snippet to the actual released coordinates.
 Do not reuse a published version if a correction is needed; release a new version.
