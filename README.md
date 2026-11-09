@@ -145,6 +145,32 @@ They cannot authenticate protected HTTP routes. Generating a pair does not revok
 the previous pair. Session tracking, atomic refresh consumption, and replay detection
 remain application responsibilities.
 
+### Recovering from an expired access cookie
+
+The default security chain ignores an **otherwise valid, expired access cookie**
+on requests already permitted anonymously. This includes `@PublicEndpoint` handlers,
+explicit `autoauth.public-paths`, deliberately public Swagger GET routes, and
+`GET /autoauth/csrf`. Matching preserves HTTP methods and MVC mapping conditions.
+The request continues anonymously: no identity or roles are taken from the expired
+token. Protected routes still reject it, including when a valid refresh cookie exists.
+
+Bootstrap CSRF with cookies included, then call your public login/refresh handler
+with the CSRF cookie and header. Unsafe public requests still require CSRF. Your
+handler must verify credentials or validate the refresh token, reload current account
+data, apply its refresh-session policy, and issue replacement cookies as usual.
+No manual cookie clearing is required for this expiry-only recovery.
+
+Recovery requires a verified RS256 signature and valid issuer, audience, purpose,
+not-before time, and identity/role claims. Malformed, wrong-signature, wrong-purpose,
+otherwise invalid, and duplicate access cookies still return 401 on public requests.
+Bearer headers retain precedence: an expired, malformed, or invalid bearer credential
+returns 401 and cannot fall back to a cookie, even on a public handler. The normal
+30-second clock tolerance remains unchanged.
+
+`JwtValidator.validateAccessToken` reports this narrow expiry case through
+`ExpiredAccessTokenException`, a subtype of `JwtValidationException`; it never returns
+an expired identity. Refresh validation continues to reject expired refresh tokens.
+
 ## Browser cookies and CSRF
 
 HttpOnly prevents JavaScript from reading the JWT cookie. It does not prevent CSRF.
@@ -190,8 +216,9 @@ public String admin() { return "admin"; }
 
 Everything else requires a valid access token. Public annotations preserve HTTP
 methods and MVC mapping conditions. A public GET does not expose a protected POST;
-a public controller exposes only its registered handlers. An explicitly supplied
-invalid JWT returns 401 even on public endpoints.
+a public controller exposes only its registered handlers. Invalid bearer credentials
+and invalid cookies return 401 even on public endpoints, with the expiry-only access
+cookie recovery described above as the sole exception.
 
 `autoauth.public-paths` is an explicit path-pattern escape hatch applying to all
 methods at matching paths. Prefer annotations for method-specific access.
@@ -257,6 +284,13 @@ top-level security schemes. Custom springdoc paths need explicit route permissio
 Application-provided validators, key providers, clocks, and cookie helpers replace
 the defaults. An application-provided `SecurityFilterChain` replaces AutoAuth's
 default chain; its owner must configure JWT authentication, public routes, and CSRF.
+
+Custom chain owners can opt into expiry-only cookie recovery by passing their shared
+anonymous-request matcher to `new JwtAuthenticationFilter(validator, properties, publicRequests)`.
+Use that same matcher for `permitAll` and retain CSRF enforcement. The existing
+two-argument filter constructor remains strict and provides no expiry recovery.
+Custom validators must reserve `ExpiredAccessTokenException` for signature-verified
+access tokens that satisfy every check other than expiration.
 
 See [scope/API migration](docs/migration-simple-jwt.md) and
 [rate limiting migration](docs/migration-autolimit.md).

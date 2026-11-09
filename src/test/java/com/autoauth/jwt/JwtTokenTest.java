@@ -2,6 +2,7 @@ package com.autoauth.jwt;
 
 import com.autoauth.config.AutoAuthProperties;
 import com.autoauth.exception.JwtValidationException;
+import com.autoauth.exception.ExpiredAccessTokenException;
 import com.autoauth.model.AutoAuthUser;
 import com.autoauth.support.TestKeys;
 import io.jsonwebtoken.*;
@@ -91,6 +92,42 @@ class JwtTokenTest {
                     .expiration(Date.from(clock.instant().minusSeconds(31))));
             assertThatThrownBy(() -> validatePurpose(expired, type)).isInstanceOf(JwtValidationException.class);
         }
+    }
+
+    @Test
+    void onlyOtherwiseValidExpiredAccessTokensReceiveRecoveryClassification() {
+        assertThatThrownBy(() -> validator.validateAccessToken(sign(expiredBuilder())))
+                .isExactlyInstanceOf(ExpiredAccessTokenException.class);
+        assertThatThrownBy(() -> validator.validateRefreshToken(sign(expiredBuilder().claim("type", "refresh"))))
+                .isInstanceOf(JwtValidationException.class).isNotInstanceOf(ExpiredAccessTokenException.class);
+    }
+
+    @Test
+    void expiryDoesNotMaskInvalidClaimsAlgorithmOrSignature() {
+        List<String> invalid = List.of(
+                sign(expiredBuilder().issuer("other")),
+                sign(expiredBuilder().issuer(null)),
+                sign(expiredBuilder().audience().clear().add("other").and()),
+                sign(expiredBuilder().claim("aud", null)),
+                sign(expiredBuilder().claim("type", "refresh")),
+                sign(expiredBuilder().claim("type", "task")),
+                sign(expiredBuilder().claim("type", null)),
+                sign(expiredBuilder().subject(null)),
+                sign(expiredBuilder().subject(" ")),
+                sign(expiredBuilder().id(null)),
+                sign(expiredBuilder().claim("roles", List.of(7))),
+                sign(expiredBuilder().claim("roles", List.of("ROLE_"))),
+                sign(expiredBuilder().notBefore(Date.from(clock.instant().plusSeconds(31)))),
+                expiredBuilder().signWith(keys.getPrivateKey(), Jwts.SIG.RS512).compact(),
+                expiredBuilder().signWith(TestKeys.generate("RSA").getPrivate(), Jwts.SIG.RS256).compact());
+        for (String token : invalid) {
+            assertThatThrownBy(() -> validator.validateAccessToken(token))
+                    .isInstanceOf(JwtValidationException.class).isNotInstanceOf(ExpiredAccessTokenException.class);
+        }
+    }
+
+    private JwtBuilder expiredBuilder() {
+        return builder().expiration(Date.from(clock.instant().minusSeconds(31)));
     }
 
     @Test
