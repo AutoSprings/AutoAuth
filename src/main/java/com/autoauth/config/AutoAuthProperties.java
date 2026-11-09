@@ -23,6 +23,8 @@ public class AutoAuthProperties {
     private String cookieSameSite = "Lax";
     private boolean swaggerPublic = false;
     private int maxTokenLength = 16384;
+    /** Maximum UTF-8 bytes per Set-Cookie header value, including name and attributes. */
+    private int maxCookieSize = 3800;
     private List<String> allowedOrigins = new ArrayList<>();
     private List<String> publicPaths = new ArrayList<>();
 
@@ -37,6 +39,9 @@ public class AutoAuthProperties {
         validateLifetime(refreshExpirationMinutes);
         if (transport == null || maxTokenLength < 256) {
             throw new IllegalArgumentException("autoauth transport and max-token-length are invalid");
+        }
+        if (maxCookieSize <= 0) {
+            throw new IllegalArgumentException("autoauth.max-cookie-size must be positive");
         }
         if (cookieName == null || !cookieName.matches("[A-Za-z0-9_-]+")
                 || refreshCookieName == null || !refreshCookieName.matches("[A-Za-z0-9_-]+")
@@ -94,6 +99,10 @@ public class AutoAuthProperties {
     public void setSwaggerPublic(boolean value) { swaggerPublic = value; }
     public int getMaxTokenLength() { return maxTokenLength; }
     public void setMaxTokenLength(int value) { maxTokenLength = value; }
+    /** @return maximum UTF-8 bytes per complete Set-Cookie header value */
+    public int getMaxCookieSize() { return maxCookieSize; }
+    /** @param value positive byte budget for each complete Set-Cookie header value */
+    public void setMaxCookieSize(int value) { maxCookieSize = value; }
     public List<String> getAllowedOrigins() { return allowedOrigins; }
     public void setAllowedOrigins(List<String> value) { allowedOrigins = value; }
     public List<String> getPublicPaths() { return publicPaths; }
