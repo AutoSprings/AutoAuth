@@ -19,7 +19,52 @@ repositories {
     mavenCentral()
 }
 
+dependencyLocking {
+    lockAllConfigurations()
+    lockMode = org.gradle.api.artifacts.dsl.LockMode.STRICT
+}
+
+// Resolve every production, test, and annotation-processor classpath used by this build.
+tasks.register('dependencyReport') {
+    group = 'verification'
+    description = 'Resolve locked dependencies and write a stable, sorted inventory by configuration.'
+    def reportFile = layout.buildDirectory.file('reports/dependencies/resolved-dependencies.json')
+    outputs.file(reportFile)
+    outputs.upToDateWhen { false }
+    doLast {
+        def scopes = ['annotationProcessor', 'compileClasspath', 'runtimeClasspath',
+                      'testAnnotationProcessor', 'testCompileClasspath', 'testRuntimeClasspath']
+        def modules = new TreeMap<String, Map>()
+        scopes.each { scope ->
+            def configuration = configurations.getByName(scope)
+            configuration.resolve() // Fail on unresolved artifacts or stale/missing lock state.
+            configuration.incoming.resolutionResult.allComponents.each { component ->
+                if (component.id instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier) {
+                    def id = component.id
+                    def coordinate = "${id.group}:${id.module}:${id.version}".toString()
+                    if (!modules.containsKey(coordinate)) {
+                        modules[coordinate] = [group: id.group, name: id.module, version: id.version, configurations: []]
+                    }
+                    modules[coordinate].configurations.add(scope)
+                }
+            }
+        }
+        def report = [java: 21, configurations: scopes, dependencies: modules.values().toList()]
+        def target = reportFile.get().asFile
+        target.parentFile.mkdirs()
+        target.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(report)) + '\n', 'UTF-8')
+        logger.lifecycle("Reported ${modules.size()} locked modules to ${target}")
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('dependencyReport')
+}
+
 dependencies {
+    // Keep JJWT/springdoc's Jackson 2 family aligned on the patched maintenance release.
+    // Import first so generated Maven metadata gives this BOM precedence over Boot's.
+    implementation platform('com.fasterxml.jackson:jackson-bom:2.22.3')
     implementation platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
     annotationProcessor platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
 

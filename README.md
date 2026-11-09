@@ -44,6 +44,10 @@ implementation 'com.autoauth:autoauth:1.0.3-SNAPSHOT'
 AutoAuth's own build resolves dependencies from Maven Central. Tests use ephemeral
 keys and require no external store. The build produces library, source, and Javadoc JARs.
 
+Dependencies are locked and checked by a separate weekly/PR audit workflow.
+See [dependency maintenance](docs/dependency-maintenance.md) for local reports,
+advisory review, update commands, and Jackson 2/3 compatibility details.
+
 ## Configuration
 
 Supply RSA keys as PEM text, a filesystem path, a `file:` URI, or a `classpath:`
