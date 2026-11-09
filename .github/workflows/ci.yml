@@ -66,6 +66,7 @@ jobs:
             'com.autoauth.config.ServletDispatchSecurityTest',
             'com.autoauth.config.CustomSwaggerPathsTest',
             'com.autoauth.config.PrivateSwaggerPathsTest',
+            'com.autoauth.config.BearerSwaggerCustomizationTest',
             'com.autoauth.config.JsonCompatibilityTest',
             'com.autoauth.config.SwaggerConsumerTest'
           )
@@ -76,6 +77,14 @@ jobs:
           }
           Write-Output "Verified $executed executed tests with no failures/errors, including JWT, HTTP/CSRF, and Swagger."
 
+      - name: Set up Python for publication verification
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Verify published Gradle and Maven consumers
+        run: python scripts/verify-publication.py
+
       - name: Upload failure reports
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7.0.2
@@ -84,5 +93,6 @@ jobs:
           path: |
             build/reports/tests/test/
             build/test-results/test/TEST-*.xml
+            build/reports/publication/
           if-no-files-found: warn
           retention-days: 7

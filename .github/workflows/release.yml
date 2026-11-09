@@ -1,0 +1,66 @@
+name: Prepare Central release bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Unused non-SNAPSHOT release version, e.g. 2.0.0'
+        required: true
+        type: string
+      group:
+        description: 'Verified Central namespace'
+        default: 'com.autoauth'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: central-release-bundle
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: maven-central
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6.2.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Build and test
+        run: bash ./gradlew --no-daemon --console=plain clean build
+      - name: Verify consumers using the release coordinates
+        env:
+          RELEASE_GROUP: ${{ inputs.group }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: python scripts/verify-publication.py --group "$RELEASE_GROUP" --version "$RELEASE_VERSION"
+      - name: Audit locked dependencies
+        uses: google/osv-scanner-action/osv-scanner-action@0a65f82af05cd58cf587827b0bb0489548c18346 # v2.7.0
+        with:
+          scan-args: |-
+            --lockfile=./gradle.lockfile
+            --format=json
+            --output=./build/reports/dependencies/release-osv.json
+      - name: Create signed Central bundle
+        env:
+          RELEASE_GROUP: ${{ inputs.group }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: bash ./gradlew --no-daemon --console=plain "-PpublicationGroup=$RELEASE_GROUP" "-PreleaseVersion=$RELEASE_VERSION" centralBundle
+      - name: Upload reviewable bundle
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: autoauth-central-bundle
+          path: build/central/*.zip
+          if-no-files-found: error
+          retention-days: 7

@@ -3,6 +3,13 @@
 # =========================================================================
 .gradle/
 /build/
+**/build/
+**/target/
+*.asc
+*.gpg
+*.pgp
+.env
+.env.*
 /.split-work/
 
 # Do NOT ignore the Gradle Wrapper files so others can run ./gradlew

@@ -3,7 +3,15 @@ package com.autoauth.model;
 import java.util.List;
 import java.util.Map;
 
-/** Trusted identity provided by an application or extracted from a validated token. */
+/**
+ * Trusted identity provided by an application or extracted from a validated token.
+ * Roles are normalized and immutable. Custom claims are copied shallowly; nested
+ * values should be immutable and must remain within token and cookie size budgets.
+ *
+ * @param userId nonblank application-owned account identifier
+ * @param roles case-sensitive roles; null means no roles; one ROLE_ prefix is removed
+ * @param customClaims additional access-token claims; null means no claims
+ */
 public record AutoAuthUser(String userId, List<String> roles, Map<String, Object> customClaims) {
     public AutoAuthUser {
         if (userId == null || userId.isBlank()) throw new IllegalArgumentException("userId must not be blank");

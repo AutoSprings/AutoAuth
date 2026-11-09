@@ -267,6 +267,26 @@ class AutoAuthConfigurationTest {
         });
     }
 
+    @Test
+    void swaggerDefaultsPreserveExplicitSchemesRequirementsAndAnonymousDocuments() {
+        var config = new AutoAuthSwaggerConfig();
+        var customizer = config.autoAuthDocumentSecurity(new AutoAuthProperties());
+        var explicitScheme = new SecurityScheme().type(SecurityScheme.Type.APIKEY).name("Application-Token")
+                .in(SecurityScheme.In.HEADER);
+        var explicit = new OpenAPI().components(new io.swagger.v3.oas.models.Components()
+                .addSecuritySchemes("JWT-Bearer", explicitScheme))
+                .security(List.of(new io.swagger.v3.oas.models.security.SecurityRequirement().addList("Application")));
+        customizer.customise(explicit);
+        customizer.customise(explicit);
+        assertThat(explicit.getComponents().getSecuritySchemes().get("JWT-Bearer")).isSameAs(explicitScheme);
+        assertThat(explicit.getSecurity()).hasSize(1);
+        assertThat(explicit.getSecurity().getFirst()).containsKey("Application");
+        var anonymous = new OpenAPI().security(List.of());
+        customizer.customise(anonymous);
+        assertThat(anonymous.getSecurity()).isEmpty();
+        assertThat(anonymous.getComponents().getSecuritySchemes()).containsKeys("JWT-Bearer", "JWT-Cookie");
+    }
+
     private WebApplicationContextRunner withKeys() {
         var properties = TestKeys.properties();
         return runner.withPropertyValues("autoauth.private-key=" + properties.getPrivateKey(),

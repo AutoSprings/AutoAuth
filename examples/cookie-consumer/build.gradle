@@ -1,0 +1,12 @@
+plugins { id 'application' }
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+repositories {
+    if (providers.gradleProperty('autoauthRepository').isPresent()) {
+        maven { url = uri(providers.gradleProperty('autoauthRepository').get()) }
+    }
+    mavenCentral()
+}
+dependencies {
+    implementation "${providers.gradleProperty('autoauthGroup').getOrElse('com.autoauth')}:autoauth:${providers.gradleProperty('autoauthVersion').getOrElse('1.0.3-SNAPSHOT')}"
+}
+application { mainClass = 'demo.DemoApplication' }
