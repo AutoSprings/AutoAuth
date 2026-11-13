@@ -22,33 +22,40 @@ Rate limiting is available separately through [AutoLimit](https://github.com/Aut
 Tokens remain valid until expiration plus the validator's 30-second clock tolerance.
 Clearing cookies removes the browser copies; it does not invalidate copied tokens.
 
-## Build and installation
+## Install
 
 The baseline is **Java 21, Spring Boot 4.1.2 / Spring Framework 7, Spring Security 7,
 and springdoc-openapi 3.1.1**. Spring Boot 3 is not the supported target for this source tree.
 
-The configured release coordinates are `io.github.autosprings:autoauth:1.0.0`.
-These changes do not publish it to Maven Central.
-Release maintainers: follow [Maven Central publishing](docs/publishing.md) to
-verify consumers, sign a release bundle, and publish it through the Central Portal.
+AutoAuth is published on [Maven Central](https://central.sonatype.com/artifact/io.github.autosprings/autoauth/1.0.0)
+as `io.github.autosprings:autoauth:1.0.0`.
 
-```powershell
-.\gradlew.bat clean build
-.\gradlew.bat publishToMavenLocal
-```
-
-After building locally, add `mavenLocal()` to the consuming project's repositories:
+### Gradle
 
 ```groovy
-implementation 'io.github.autosprings:autoauth:1.0.0'
+repositories { mavenCentral() }
+dependencies { implementation 'io.github.autosprings:autoauth:1.0.0' }
 ```
 
-AutoAuth's own build resolves dependencies from Maven Central. Tests use ephemeral
-keys and require no external store. The build produces library, source, and Javadoc JARs.
+### Maven
 
-Dependencies are locked and checked by a separate weekly/PR audit workflow.
-See [dependency maintenance](docs/dependency-maintenance.md) for local reports,
-advisory review, update commands, and Jackson 2/3 compatibility details.
+```xml
+<dependency>
+    <groupId>io.github.autosprings</groupId>
+    <artifactId>autoauth</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
+Maven Central is available by default in Maven; no additional repository is needed.
+No source checkout or local publication is required. Spring Boot discovers AutoAuth
+automatically; supply the key configuration below to start using it.
+
+### For coding agents
+
+Use [SKILL.md](SKILL.md) for a self-contained integration guide with package imports,
+token APIs, configuration, browser flows, and security constraints. It is intended
+to let agents integrate the published library without searching its implementation.
 
 ## Configuration
 
@@ -320,6 +327,23 @@ See [scope/API migration](docs/migration-simple-jwt.md) and
 Run the [cookie consumer example](examples/cookie-consumer/README.md) to explore
 login, refresh, role checks, logout, and Swagger using the actual published artifact
 through either Gradle or Maven.
+
+## Building from source
+
+```powershell
+.\gradlew.bat clean build
+.\gradlew.bat publishToMavenLocal
+```
+
+For local library development, add `mavenLocal()` to the consuming project's
+repositories. Tests use ephemeral keys and require no external store. The build
+produces library, source, and Javadoc JARs.
+
+Dependencies are locked and checked by a separate weekly/PR audit workflow.
+See [dependency maintenance](docs/dependency-maintenance.md) for local reports,
+advisory review, update commands, and Jackson 2/3 compatibility details.
+Release maintainers: follow [Maven Central publishing](docs/publishing.md) to
+verify consumers, sign a release bundle, and publish it through the Central Portal.
 
 ## License
 
