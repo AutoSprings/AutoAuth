@@ -78,7 +78,7 @@ jobs:
           Write-Output "Verified $executed executed tests with no failures/errors, including JWT, HTTP/CSRF, and Swagger."
 
       - name: Set up Python for publication verification
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.13'
 
