@@ -72,8 +72,8 @@ dependencies {
     // Keep JJWT/springdoc's Jackson 2 family aligned on the patched maintenance release.
     // Import first so generated Maven metadata gives this BOM precedence over Boot's.
     api platform('com.fasterxml.jackson:jackson-bom:2.22.3')
-    api platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
-    annotationProcessor platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
+    api platform('org.springframework.boot:spring-boot-dependencies:4.2.0')
+    annotationProcessor platform('org.springframework.boot:spring-boot-dependencies:4.2.0')
 
     implementation 'org.springframework.boot:spring-boot-autoconfigure'
 
